@@ -101,7 +101,7 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             commandServer = server
             val override = OverrideOptions().apply {
                 if (excludePackages.isNotEmpty()) {
-                    excludePackage = StringArray((excludePackages + packageName).iterator())
+                    excludePackage = StringArray(excludePackages + packageName)
                 }
             }
             server.startOrReloadService(config, override)
@@ -203,11 +203,14 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 val r6 = options.inet6RouteRange
                 while (r6.hasNext()) { val a = r6.next(); builder.addRoute(a.address(), a.prefix()) }
             }
-            // per-app
+            // per-app split: allowed apps use the tunnel, disallowed bypass it
             val incl = options.includePackage
             while (incl.hasNext()) { try { builder.addAllowedApplication(incl.next()) } catch (_: Exception) {} }
             val excl = options.excludePackage
-            while (excl.hasNext()) { try { builder.addDisallowedApplication(excl.next()) } catch (_: Exception) {} }
+            while (excl.hasNext()) {
+                val pkg = excl.next()
+                try { builder.addDisallowedApplication(pkg) } catch (e: Exception) { Log.w(TAG, "disallow $pkg failed", e) }
+            }
         }
         val p = builder.establish() ?: error("android: the application is not prepared or revoked")
         pfd = p
@@ -230,7 +233,7 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         return ConnectionOwner().apply {
             userId = uid
             userName = packages?.firstOrNull() ?: ""
-            setAndroidPackageNames(StringArray((packages?.toList() ?: emptyList()).iterator()))
+            setAndroidPackageNames(StringArray(packages?.toList() ?: emptyList()))
         }
     }
 
@@ -253,7 +256,7 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             val sysIf = sysIfaces.find { it.name == lp.interfaceName } ?: continue
             val bi = LibboxNetworkInterface()
             bi.name = lp.interfaceName
-            bi.dnsServer = StringArray(lp.dnsServers.mapNotNull { it.hostAddress }.iterator())
+            bi.dnsServer = StringArray(lp.dnsServers.mapNotNull { it.hostAddress })
             bi.type = when {
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> Libbox.InterfaceTypeWIFI
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> Libbox.InterfaceTypeCellular
@@ -262,7 +265,7 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             }
             bi.index = sysIf.index
             runCatching { bi.mtu = sysIf.mtu }
-            bi.addresses = StringArray(sysIf.interfaceAddresses.mapNotNull { it.toPrefix() }.iterator())
+            bi.addresses = StringArray(sysIf.interfaceAddresses.mapNotNull { it.toPrefix() })
             var flags = 0
             if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) flags = OsConstants.IFF_UP or OsConstants.IFF_RUNNING
             if (sysIf.isLoopback) flags = flags or OsConstants.IFF_LOOPBACK
@@ -298,7 +301,7 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                     "\n-----END CERTIFICATE-----")
             }
         } catch (_: Exception) {}
-        return StringArray(certs.iterator())
+        return StringArray(certs)
     }
 
     // ===================== CommandServerHandler =====================
@@ -318,8 +321,12 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         if (address is Inet6Address) "${Inet6Address.getByAddress(address.address).hostAddress}/$networkPrefixLength"
         else "${address.hostAddress}/$networkPrefixLength"
 
-    class StringArray(private val it: Iterator<String>) : StringIterator {
-        override fun len(): Int = 0
+    // NB: len() MUST return the real count — libbox's Go side preallocates from
+    // it before iterating, so returning 0 silently drops every element (this is
+    // what broke per-app exclusions / excludePackage).
+    class StringArray(private val items: List<String>) : StringIterator {
+        private val it = items.iterator()
+        override fun len(): Int = items.size
         override fun hasNext(): Boolean = it.hasNext()
         override fun next(): String = it.next()
     }

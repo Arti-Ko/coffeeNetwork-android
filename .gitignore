@@ -48,3 +48,6 @@ app.*.map.json
 /android/key.properties
 /android/app/*.jks
 /android/app/*.keystore
+
+# Kotlin compiler session artifacts
+/android/.kotlin/

@@ -14,7 +14,10 @@ SharedPreferences? _prefs;
 class Pal {
   static bool dark = true;
   static Color accent = const Color(0xFFE8A33D);
-  static const accentInk = Color(0xFF1A1206);
+  // Text/icon color drawn ON the accent — flips with accent luminance so any
+  // custom color stays readable (dark ink on light accent, light ink on dark).
+  static Color get accentInk =>
+      accent.computeLuminance() > 0.45 ? const Color(0xFF1A1206) : const Color(0xFFFBF3E6);
 
   static Color get bg => dark ? const Color(0xFF121010) : const Color(0xFFF4F1EC);
   static Color get card => dark ? const Color(0x16FFFFFF) : const Color(0x0D000000);
@@ -612,8 +615,10 @@ class _ServersPage extends StatelessWidget {
   }
 
   void _settingsSheet(BuildContext context) {
+    var hsv = HSVColor.fromColor(Pal.accent);
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Pal.dark ? const Color(0xFF1A1714) : const Color(0xFFFFFFFF),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
@@ -625,8 +630,10 @@ class _ServersPage extends StatelessWidget {
           state.setState(() {}); // rebuild the home pages (they read Pal directly)
         }
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        void setAccent(HSVColor v) => apply(() { hsv = v; Pal.accent = v.toColor(); });
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 28 + MediaQuery.of(ctx).viewInsets.bottom),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             _label('НАСТРОЙКИ'),
             const SizedBox(height: 16),
@@ -641,14 +648,21 @@ class _ServersPage extends StatelessWidget {
               ]),
             ),
             const SizedBox(height: 20),
-            _label('АКЦЕНТ'),
+            Row(children: [
+              _label('АКЦЕНТ'),
+              const Spacer(),
+              Container(
+                width: 30, height: 30,
+                decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(8), border: Border.all(color: Pal.edge)),
+              ),
+            ]),
             const SizedBox(height: 12),
-            Wrap(spacing: 14, runSpacing: 14, children: [
+            Wrap(spacing: 12, runSpacing: 12, children: [
               for (final c in accentPresets)
                 GestureDetector(
-                  onTap: () => apply(() => Pal.accent = c),
+                  onTap: () => setAccent(HSVColor.fromColor(c)),
                   child: Container(
-                    width: 40, height: 40,
+                    width: 34, height: 34,
                     decoration: BoxDecoration(
                       color: c, shape: BoxShape.circle,
                       border: Border.all(color: Pal.accent.value == c.value ? Pal.ink : Colors.transparent, width: 3),
@@ -656,6 +670,26 @@ class _ServersPage extends StatelessWidget {
                   ),
                 ),
             ]),
+            const SizedBox(height: 18),
+            _label('СВОЙ ЦВЕТ'),
+            const SizedBox(height: 10),
+            _ColorBar(
+              thumb: hsv.hue / 360,
+              gradient: [for (var h = 0; h <= 360; h += 30) HSVColor.fromAHSV(1, h.toDouble(), 1, 1).toColor()],
+              onChanged: (f) => setAccent(hsv.withHue((f * 360).clamp(0, 359.9))),
+            ),
+            const SizedBox(height: 10),
+            _ColorBar(
+              thumb: hsv.saturation,
+              gradient: [HSVColor.fromAHSV(1, hsv.hue, 0, hsv.value).toColor(), HSVColor.fromAHSV(1, hsv.hue, 1, hsv.value).toColor()],
+              onChanged: (f) => setAccent(hsv.withSaturation(f.clamp(0, 1))),
+            ),
+            const SizedBox(height: 10),
+            _ColorBar(
+              thumb: hsv.value,
+              gradient: [HSVColor.fromAHSV(1, hsv.hue, hsv.saturation, 0).toColor(), HSVColor.fromAHSV(1, hsv.hue, hsv.saturation, 1).toColor()],
+              onChanged: (f) => setAccent(hsv.withValue(f.clamp(0, 1))),
+            ),
             const SizedBox(height: 22),
             Text('coffeeNetwork v0.1.0', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim)),
           ]),
@@ -699,6 +733,46 @@ class _ServersPage extends StatelessWidget {
       );
 }
 
+/// A gradient bar you tap/drag to pick a 0..1 value (hue, saturation, brightness).
+class _ColorBar extends StatelessWidget {
+  final double thumb; // 0..1 position
+  final List<Color> gradient;
+  final ValueChanged<double> onChanged;
+  const _ColorBar({required this.thumb, required this.gradient, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (ctx, c) {
+      void emit(double dx) => onChanged((dx / c.maxWidth).clamp(0.0, 1.0));
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (d) => emit(d.localPosition.dx),
+        onHorizontalDragUpdate: (d) => emit(d.localPosition.dx),
+        child: Container(
+          height: 30,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: gradient),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: Pal.edge),
+          ),
+          child: Align(
+            alignment: Alignment(thumb.clamp(0.0, 1.0) * 2 - 1, 0),
+            child: Container(
+              width: 8, height: 30,
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.white, width: 2.5),
+                boxShadow: const [BoxShadow(color: Color(0x88000000), blurRadius: 3)],
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+}
+
 // ===================== exclusions (ИГНОР) =====================
 class _ExclSheet extends StatefulWidget {
   final _HomeShellState state;
@@ -716,11 +790,14 @@ class _ExclSheetState extends State<_ExclSheet> {
   void initState() {
     super.initState();
     working = Set<String>.from(widget.state.excluded);
-    if (widget.state.apps.isEmpty) _loadApps();
+    if (widget.state.apps.isEmpty) {
+      loading = true; // plain field write — calling setState() here throws ("during build")
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadApps());
+    }
   }
 
   Future<void> _loadApps() async {
-    setState(() => loading = true);
+    if (mounted) setState(() => loading = true);
     try {
       final raw = await _vpn.invokeMethod<String>('listApps');
       widget.state.apps = (jsonDecode(raw ?? '[]') as List).cast<Map<String, dynamic>>();
