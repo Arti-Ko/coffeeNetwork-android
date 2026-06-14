@@ -114,6 +114,7 @@ class _HomeShellState extends State<HomeShell> {
   int upSpeed = 0, downSpeed = 0;
   int _upT = 0, _downT = 0;
   DateTime? _tT;
+  bool onboard = false; // first-launch visual tutorial overlay
 
   @override
   void initState() {
@@ -148,6 +149,12 @@ class _HomeShellState extends State<HomeShell> {
       } catch (_) {}
     }
     if (selectedId == null && servers.isNotEmpty) selectedId = servers.first.id;
+    onboard = !(p.getBool('onboarded') ?? false);
+  }
+
+  void _finishOnboarding() {
+    _prefs!.setBool('onboarded', true);
+    setState(() => onboard = false);
   }
 
   void _save() {
@@ -285,6 +292,7 @@ class _HomeShellState extends State<HomeShell> {
               ],
             ),
           ),
+          if (onboard) Positioned.fill(child: _Onboarding(onDone: _finishOnboarding)),
         ],
       ),
     );
@@ -691,7 +699,12 @@ class _ServersPage extends StatelessWidget {
               onChanged: (f) => setAccent(hsv.withValue(f.clamp(0, 1))),
             ),
             const SizedBox(height: 22),
-            Text('coffeeNetwork v0.1.0', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim)),
+            _ghost('ПОКАЗАТЬ ОБУЧЕНИЕ', () {
+              Navigator.pop(ctx);
+              state.setState(() => state.onboard = true);
+            }),
+            const SizedBox(height: 14),
+            Text('coffeeNetwork v0.1.1', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim)),
           ]),
         );
       }),
@@ -905,4 +918,211 @@ class _ExclSheetState extends State<_ExclSheet> {
       ),
     );
   }
+}
+
+// ===================== ONBOARDING (first-launch visual tutorial) =====================
+class _OnbStep {
+  final String tag, title, body, why;
+  final Widget visual;
+  const _OnbStep({required this.tag, required this.title, required this.body, required this.why, required this.visual});
+}
+
+/// Full-screen tutorial shown once on first launch (flag `onboarded` in prefs).
+/// A swipeable, on-brand walkthrough: each step pairs a mock UI cue ("где
+/// кликать") with what to do and why. Re-openable from Настройки.
+class _Onboarding extends StatefulWidget {
+  final VoidCallback onDone;
+  const _Onboarding({required this.onDone});
+  @override
+  State<_Onboarding> createState() => _OnboardingState();
+}
+
+class _OnboardingState extends State<_Onboarding> {
+  final _pc = PageController();
+  int _i = 0;
+
+  @override
+  void dispose() {
+    _pc.dispose();
+    super.dispose();
+  }
+
+  void _next() {
+    if (_i >= _steps.length - 1) {
+      widget.onDone();
+      return;
+    }
+    _pc.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+  }
+
+  TextStyle _ts(double size, {Color? color, FontWeight w = FontWeight.w700, double ls = 1.4}) =>
+      TextStyle(fontFamily: _mono, fontSize: size, fontWeight: w, letterSpacing: ls, color: color ?? Pal.ink);
+
+  Widget _finger() => Padding(padding: const EdgeInsets.only(top: 12), child: Icon(Icons.touch_app, color: Pal.accent, size: 26));
+
+  List<_OnbStep> get _steps => [
+        _OnbStep(
+          tag: 'COFFEE · NETWORK',
+          title: 'Свобода в один тап',
+          body: 'Быстрый VPN на ядре sing-box. Главный экран — твой «посадочный талон»: статус, режим и большая кнопка подключения.',
+          why: 'Свайпай между талоном и списком серверов.',
+          visual: Icon(Icons.flight, color: Pal.accent, size: 66),
+        ),
+        _OnbStep(
+          tag: 'ШАГ 1 · СЕРВЕР',
+          title: 'Добавь сервер',
+          body: 'Свайпни влево на экран SERVERS и нажми «+ ДОБАВИТЬ». Вставь ссылку (vless://, hysteria2://, vmess://, ss://, trojan://, tuic://) от своего VPN-провайдера.',
+          why: 'Без сервера подключаться не к чему.',
+          visual: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+              decoration: BoxDecoration(
+                color: Pal.accent.withOpacity(0.16),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: Pal.accent, width: 1.5),
+              ),
+              child: Text('+ ДОБАВИТЬ', style: _ts(14, color: Pal.accent)),
+            ),
+            _finger(),
+          ]),
+        ),
+        _OnbStep(
+          tag: 'ШАГ 2 · ПОДКЛЮЧЕНИЕ',
+          title: 'Выбери и жми CONNECT',
+          body: 'Коснись сервера в списке, чтобы выбрать его. Вернись на талон и нажми большую кнопку CONNECT.',
+          why: 'Код ON и зелёная точка — значит ты под защитой.',
+          visual: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 220,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+              decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(16)),
+              child: Row(children: [
+                Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: Pal.accentInk)),
+                const SizedBox(width: 12),
+                Text('CONNECT', style: _ts(15, color: Pal.accentInk, ls: 2)),
+                const Spacer(),
+                Icon(Icons.arrow_forward, size: 18, color: Pal.accentInk),
+              ]),
+            ),
+            _finger(),
+          ]),
+        ),
+        _OnbStep(
+          tag: 'РЕЖИМ ПОДКЛЮЧЕНИЯ',
+          title: 'TUN · ALL или SYS PROXY',
+          body: 'TUN · ALL — весь трафик устройства идёт через VPN (рекомендуется). SYS PROXY — только системный прокси.',
+          why: 'TUN надёжнее: ни одно приложение не утечёт мимо туннеля.',
+          visual: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(color: Pal.hair, borderRadius: BorderRadius.circular(14)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13), child: Text('SYS PROXY', style: _ts(13, color: Pal.inkFaint, w: FontWeight.w400))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                decoration: BoxDecoration(color: Pal.accent.withOpacity(0.18), borderRadius: BorderRadius.circular(11), border: Border.all(color: Pal.accent)),
+                child: Text('TUN · ALL', style: _ts(13, color: Pal.accent)),
+              ),
+            ]),
+          ),
+        ),
+        _OnbStep(
+          tag: 'RU-BYPASS',
+          title: 'Российское — мимо VPN',
+          body: 'С включённым RU-BYPASS российские сайты и IP идут напрямую, в обход VPN.',
+          why: 'Быстрее и без «обнаружен VPN» на РФ-сервисах. Выключи для полного туннеля.',
+          visual: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: BoxDecoration(color: Pal.accent.withOpacity(0.10), borderRadius: BorderRadius.circular(14), border: Border.all(color: Pal.accent)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('RU-BYPASS', style: _ts(13, color: Pal.ink)),
+              const SizedBox(width: 16),
+              Container(
+                width: 46, height: 27,
+                padding: const EdgeInsets.all(3),
+                alignment: Alignment.centerRight,
+                decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(14)),
+                child: Container(width: 21, height: 21, decoration: BoxDecoration(shape: BoxShape.circle, color: Pal.accentInk)),
+              ),
+            ]),
+          ),
+        ),
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    final last = _i == _steps.length - 1;
+    return Material(
+      color: Pal.dark ? const Color(0xF2171210) : const Color(0xF7F4F1EC),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 22),
+          child: Column(children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text.rich(TextSpan(children: [
+                TextSpan(text: 'COFFEE', style: _ts(12, ls: 3)),
+                TextSpan(text: 'NETWORK', style: _ts(12, color: Pal.accent, ls: 3)),
+              ])),
+              GestureDetector(onTap: widget.onDone, child: Text('ПРОПУСТИТЬ', style: _ts(11, color: Pal.inkFaint, w: FontWeight.w400, ls: 1.5))),
+            ]),
+            Expanded(
+              child: PageView.builder(
+                controller: _pc,
+                onPageChanged: (v) => setState(() => _i = v),
+                itemCount: _steps.length,
+                itemBuilder: (_, i) => _slide(_steps[i]),
+              ),
+            ),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (var k = 0; k < _steps.length; k++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: k == _i ? 22 : 7,
+                  height: 7,
+                  decoration: BoxDecoration(color: k == _i ? Pal.accent : Pal.edge, borderRadius: BorderRadius.circular(4)),
+                ),
+            ]),
+            const SizedBox(height: 20),
+            GestureDetector(
+              onTap: _next,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 17),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(16)),
+                child: Text(last ? 'НАЧАТЬ ✦' : 'ДАЛЕЕ', style: _ts(15, color: Pal.accentInk, ls: 2)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _slide(_OnbStep s) => SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            height: 190,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: Pal.card, borderRadius: BorderRadius.circular(22), border: Border.all(color: Pal.edge)),
+            child: s.visual,
+          ),
+          const SizedBox(height: 26),
+          Text(s.tag, style: _ts(10, color: Pal.accent, ls: 2.4)),
+          const SizedBox(height: 10),
+          Text(s.title, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Pal.ink, height: 1.1)),
+          const SizedBox(height: 12),
+          Text(s.body, style: TextStyle(fontSize: 14.5, height: 1.45, color: Pal.inkDim)),
+          const SizedBox(height: 14),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.info_outline, size: 16, color: Pal.accent),
+            const SizedBox(width: 8),
+            Expanded(child: Text(s.why, style: TextStyle(fontSize: 13, height: 1.4, color: Pal.inkFaint))),
+          ]),
+          const SizedBox(height: 14),
+        ]),
+      );
 }
