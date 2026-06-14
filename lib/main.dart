@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _vpn = MethodChannel('coffeenetwork/vpn');
 const _mono = 'monospace';
+const _ghRepo = 'Arti-Ko/coffeeNetwork-android'; // GitHub repo for update checks
 final rootKey = GlobalKey<_CoffeeAppState>();
 SharedPreferences? _prefs;
 
@@ -115,6 +117,7 @@ class _HomeShellState extends State<HomeShell> {
   int _upT = 0, _downT = 0;
   DateTime? _tT;
   bool onboard = false; // first-launch visual tutorial overlay
+  String appVer = '0.1.2'; // current version, refreshed from native on launch
 
   @override
   void initState() {
@@ -125,6 +128,13 @@ class _HomeShellState extends State<HomeShell> {
     if (seed.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => importLinks(seed));
     }
+    _appVersion().then((v) {
+      if (v != null && v.isNotEmpty && mounted) setState(() => appVer = v);
+    });
+    // background update check shortly after launch (skips a dismissed version)
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) checkUpdate();
+    });
   }
 
   @override
@@ -155,6 +165,128 @@ class _HomeShellState extends State<HomeShell> {
   void _finishOnboarding() {
     _prefs!.setBool('onboarded', true);
     setState(() => onboard = false);
+  }
+
+  Future<String?> _appVersion() async {
+    try {
+      return await _vpn.invokeMethod<String>('appVersion');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// True if semver-ish [remote] (e.g. "0.1.3") is newer than [local] ("0.1.2").
+  static bool _isNewer(String remote, String local) {
+    List<int> parts(String s) =>
+        s.replaceFirst(RegExp(r'^v'), '').split(RegExp(r'[.+\-]')).map((x) => int.tryParse(x) ?? 0).toList();
+    final r = parts(remote), l = parts(local);
+    for (var i = 0; i < 3; i++) {
+      final a = i < r.length ? r[i] : 0;
+      final b = i < l.length ? l[i] : 0;
+      if (a != b) return a > b;
+    }
+    return false;
+  }
+
+  /// Check GitHub Releases for a newer APK. [manual] = triggered from settings:
+  /// always reports a result and ignores the per-version skip list.
+  Future<void> checkUpdate({bool manual = false}) async {
+    if (manual) snack('Проверяю обновления…');
+    HttpClient? client;
+    try {
+      final cur = await _appVersion() ?? appVer;
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+      final req = await client.getUrl(Uri.parse('https://api.github.com/repos/$_ghRepo/releases/latest'));
+      req.headers.set(HttpHeaders.userAgentHeader, 'coffeeNetwork-android');
+      req.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+      final resp = await req.close().timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) {
+        if (manual) snack('Не удалось проверить обновления', err: true);
+        return;
+      }
+      final body = await resp.transform(utf8.decoder).join();
+      final j = jsonDecode(body) as Map<String, dynamic>;
+      final ver = ((j['tag_name'] as String?) ?? '').replaceFirst(RegExp(r'^v'), '');
+      final notes = (j['body'] as String?) ?? '';
+      final pageUrl = (j['html_url'] as String?) ?? 'https://github.com/$_ghRepo/releases/latest';
+      String? apkUrl;
+      for (final a in (j['assets'] as List? ?? const [])) {
+        final name = ((a as Map)['name'] as String?) ?? '';
+        if (name.toLowerCase().endsWith('.apk')) {
+          apkUrl = a['browser_download_url'] as String?;
+          break;
+        }
+      }
+      if (ver.isEmpty || !_isNewer(ver, cur)) {
+        if (manual) snack('У вас последняя версия ($cur)');
+        return;
+      }
+      if (!manual && _prefs!.getString('skipVersion') == ver) return;
+      if (mounted) _showUpdateDialog(ver, notes, apkUrl ?? pageUrl);
+    } catch (_) {
+      if (manual) snack('Не удалось проверить обновления', err: true);
+    } finally {
+      client?.close(force: true);
+    }
+  }
+
+  void _showUpdateDialog(String ver, String notes, String url) {
+    final head = notes.trim().split('\n').take(10).join('\n').trim();
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Pal.dark ? const Color(0xFF1A1714) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.system_update, color: Pal.accent, size: 22),
+              const SizedBox(width: 10),
+              Text('ОБНОВЛЕНИЕ', style: TextStyle(fontFamily: _mono, fontSize: 13, letterSpacing: 2, fontWeight: FontWeight.w700, color: Pal.ink)),
+            ]),
+            const SizedBox(height: 14),
+            Text('Доступна версия $ver', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Pal.accent)),
+            const SizedBox(height: 4),
+            Text('у вас $appVer', style: TextStyle(fontFamily: _mono, fontSize: 11, color: Pal.inkFaint)),
+            if (head.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: SingleChildScrollView(child: Text(head, style: TextStyle(fontSize: 13, height: 1.45, color: Pal.inkDim))),
+              ),
+            ],
+            const SizedBox(height: 18),
+            Row(children: [
+              GestureDetector(
+                onTap: () {
+                  _prefs!.setString('skipVersion', ver);
+                  Navigator.pop(ctx);
+                },
+                child: Text('ПРОПУСТИТЬ', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkFaint)),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pop(ctx),
+                child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), child: Text('ПОЗЖЕ', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim))),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () {
+                  _vpn.invokeMethod('openUrl', {'url': url});
+                  Navigator.pop(ctx);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                  decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(11)),
+                  child: Text('ОБНОВИТЬ', style: TextStyle(fontFamily: _mono, fontSize: 12, fontWeight: FontWeight.w700, color: Pal.accentInk)),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
   }
 
   void _save() {
@@ -699,12 +831,17 @@ class _ServersPage extends StatelessWidget {
               onChanged: (f) => setAccent(hsv.withValue(f.clamp(0, 1))),
             ),
             const SizedBox(height: 22),
+            _ghost('ПРОВЕРИТЬ ОБНОВЛЕНИЯ', () {
+              Navigator.pop(ctx);
+              state.checkUpdate(manual: true);
+            }),
+            const SizedBox(height: 10),
             _ghost('ПОКАЗАТЬ ОБУЧЕНИЕ', () {
               Navigator.pop(ctx);
               state.setState(() => state.onboard = true);
             }),
             const SizedBox(height: 14),
-            Text('coffeeNetwork v0.1.1', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim)),
+            Text('coffeeNetwork v${state.appVer}', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim)),
           ]),
         );
       }),

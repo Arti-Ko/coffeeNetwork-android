@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.util.Base64
@@ -72,6 +73,18 @@ class MainActivity : FlutterActivity() {
                 }
                 "traffic" -> result.success(traffic())
                 "listApps" -> result.success(listApps())
+                "appVersion" -> result.success(
+                    try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { null }
+                )
+                "openUrl" -> {
+                    val url = call.argument<String>("url") ?: ""
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("openUrl", e.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
