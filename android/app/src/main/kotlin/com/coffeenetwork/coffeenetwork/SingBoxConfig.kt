@@ -198,26 +198,18 @@ object SingBoxConfig {
         return Parsed(nameFrom(uri, "TUIC $host"), "tuic", host, port, ob)
     }
 
-    // Fetch geo rule-sets through the tunnel, not direct: in RU
-    // raw.githubusercontent.com is routinely blocked/throttled, so a direct fetch
-    // fails and the RU rule-sets never load — RU domains then fall through to the
-    // proxy, so sites see a foreign IP ("VPN detected"), error out, or won't open.
-    // The proxy is up by the time rule-sets fetch; results persist via cache_file.
+    // download_detour MUST stay "direct": routing through "proxy" creates a
+    // start-up dependency cycle on a fresh install (router needs the rule-sets →
+    // rule-sets download through the proxy → proxy isn't up until the router
+    // starts), which makes the VPN fail to start. Direct download breaks the
+    // cycle. (Trade-off: where GitHub is blocked the RU rule-sets may load late.)
     private fun ruleSet(tag: String, url: String) = JSONObject()
         .put("type", "remote").put("tag", tag).put("format", "binary")
-        .put("url", url).put("download_detour", PROXY).put("update_interval", "72h")
+        .put("url", url).put("download_detour", "direct").put("update_interval", "72h")
 
     /** Build the full sing-box config (Android TUN) for [outbound]. */
     fun build(outbound: JSONObject, bypassRu: Boolean, cachePath: String): String {
         val proxy = JSONObject(outbound.toString()).put("tag", PROXY)
-        // Low-risk dialer tuning for a faster, sturdier connection; only fill in
-        // what the share-link didn't already set.
-        //  • tcp_fast_open — saves a round-trip on TCP protocols (vless/trojan/
-        //    vmess/ss); harmless no-op for QUIC (hysteria2/tuic).
-        //  • udp_fragment — lets large UDP/QUIC datagrams fragment instead of being
-        //    dropped on small-MTU paths (mobile), which otherwise stalls/fails.
-        if (!proxy.has("tcp_fast_open")) proxy.put("tcp_fast_open", true)
-        if (!proxy.has("udp_fragment")) proxy.put("udp_fragment", true)
 
         val dnsRules = JSONArray()
         if (bypassRu) {

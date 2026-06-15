@@ -118,7 +118,7 @@ class _HomeShellState extends State<HomeShell> {
   int _upT = 0, _downT = 0;
   DateTime? _tT;
   bool onboard = false; // first-launch visual tutorial overlay
-  String appVer = '0.1.3'; // current version, refreshed from native on launch
+  String appVer = '0.1.4'; // current version, refreshed from native on launch
 
   @override
   void initState() {
@@ -1137,6 +1137,31 @@ class _OnboardingState extends State<_Onboarding> {
               ),
             ]),
           ),
+        ),
+        _OnbStep(
+          tag: 'ИГНОР · SPLIT-TUNNEL',
+          title: 'Приложения мимо VPN',
+          body: 'На экране SERVERS внизу нажми «ИГНОР» и отметь приложения, которые должны ходить напрямую, в обход VPN — например, банки, госуслуги или игры.',
+          why: 'Отмеченные приложения видят твой реальный IP, весь остальной трафик идёт через VPN.',
+          visual: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              decoration: BoxDecoration(border: Border.all(color: Pal.accent), borderRadius: BorderRadius.circular(12), color: Pal.accent.withOpacity(0.10)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(width: 26, height: 26, decoration: BoxDecoration(color: Pal.hair, borderRadius: BorderRadius.circular(6))),
+                const SizedBox(width: 10),
+                Text('Банк', style: TextStyle(fontSize: 14, color: Pal.ink)),
+                const SizedBox(width: 16),
+                Container(
+                  width: 22, height: 22,
+                  decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(6)),
+                  child: Icon(Icons.check, size: 15, color: Pal.accentInk),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 10),
+            Text('ИГНОР', style: _ts(11, color: Pal.inkFaint, ls: 2)),
+          ]),
         ),
       ];
 
