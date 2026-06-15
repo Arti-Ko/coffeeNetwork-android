@@ -221,11 +221,7 @@ object SingBoxConfig {
                 .put(JSONObject().put("type", "https").put("tag", "local-ru").put("server", "77.88.8.8")))
             .put("rules", dnsRules)
             .put("final", "remote")
-            // ipv4_only, not prefer_ipv4: the proxy carries IPv4 only, so any AAAA
-            // leads to an IPv6 connection the tunnel can't route → the browser
-            // stalls on Happy-Eyeballs and shows "This site can't be reached".
-            // Returning only A records keeps every connection on a routable path.
-            .put("strategy", "ipv4_only")
+            .put("strategy", "prefer_ipv4")
             .put("independent_cache", true)
 
         val inbounds = JSONArray().put(JSONObject()
@@ -234,13 +230,7 @@ object SingBoxConfig {
             .put("address", JSONArray().put("172.19.0.1/30").put("fdfe:dcba:9876::1/126"))
             .put("auto_route", true)
             .put("strict_route", true)
-            .put("stack", "system")
-            // sing-box defaults the TUN MTU to 9000 (large segments for max
-            // throughput). On mobile/cellular networks the real path MTU is ~1400
-            // (CGNAT + carrier tunnelling), so 9000-byte packets get dropped and
-            // the tunnel "almost never works". 1400 fits virtually every network.
-            // (Propagates to VpnService.Builder.setMtu via libbox TunOptions.)
-            .put("mtu", 1400))
+            .put("stack", "system"))
 
         val routeRules = JSONArray()
             .put(JSONObject().put("action", "sniff"))

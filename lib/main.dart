@@ -118,7 +118,7 @@ class _HomeShellState extends State<HomeShell> {
   int _upT = 0, _downT = 0;
   DateTime? _tT;
   bool onboard = false; // first-launch visual tutorial overlay
-  String appVer = '0.1.4'; // current version, refreshed from native on launch
+  String appVer = '0.1.5'; // current version, refreshed from native on launch
 
   @override
   void initState() {
