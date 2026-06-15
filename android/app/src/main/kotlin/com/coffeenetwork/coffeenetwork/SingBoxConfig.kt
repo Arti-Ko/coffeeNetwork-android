@@ -221,7 +221,10 @@ object SingBoxConfig {
                 .put(JSONObject().put("type", "https").put("tag", "local-ru").put("server", "77.88.8.8")))
             .put("rules", dnsRules)
             .put("final", "remote")
-            .put("strategy", "prefer_ipv4")
+            // ipv4_only (verified on-device): the proxy carries IPv4 only, so any
+            // AAAA leads to an IPv6 connection the tunnel can't route → "This site
+            // can't be reached". A-only keeps every connection on a routable path.
+            .put("strategy", "ipv4_only")
             .put("independent_cache", true)
 
         val inbounds = JSONArray().put(JSONObject()
@@ -230,7 +233,10 @@ object SingBoxConfig {
             .put("address", JSONArray().put("172.19.0.1/30").put("fdfe:dcba:9876::1/126"))
             .put("auto_route", true)
             .put("strict_route", true)
-            .put("stack", "system"))
+            .put("stack", "system")
+            // mtu 1400 (verified on-device): mobile/cellular path MTU is ~1400
+            // (CGNAT/carrier tunnelling); the 9000 default drops large packets.
+            .put("mtu", 1400))
 
         val routeRules = JSONArray()
             .put(JSONObject().put("action", "sniff"))
