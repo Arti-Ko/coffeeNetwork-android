@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 const _vpn = MethodChannel('coffeenetwork/vpn');
 const _mono = 'monospace';
 const _ghRepo = 'Arti-Ko/coffeeNetwork-android'; // GitHub repo for update checks
+const _updateProgress = EventChannel('coffeenetwork/update_progress'); // APK download %
 final rootKey = GlobalKey<_CoffeeAppState>();
 SharedPreferences? _prefs;
 
@@ -117,7 +118,7 @@ class _HomeShellState extends State<HomeShell> {
   int _upT = 0, _downT = 0;
   DateTime? _tT;
   bool onboard = false; // first-launch visual tutorial overlay
-  String appVer = '0.1.2'; // current version, refreshed from native on launch
+  String appVer = '0.1.3'; // current version, refreshed from native on launch
 
   @override
   void initState() {
@@ -231,60 +232,14 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _showUpdateDialog(String ver, String notes, String url) {
-    final head = notes.trim().split('\n').take(10).join('\n').trim();
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Pal.dark ? const Color(0xFF1A1714) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(Icons.system_update, color: Pal.accent, size: 22),
-              const SizedBox(width: 10),
-              Text('ОБНОВЛЕНИЕ', style: TextStyle(fontFamily: _mono, fontSize: 13, letterSpacing: 2, fontWeight: FontWeight.w700, color: Pal.ink)),
-            ]),
-            const SizedBox(height: 14),
-            Text('Доступна версия $ver', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Pal.accent)),
-            const SizedBox(height: 4),
-            Text('у вас $appVer', style: TextStyle(fontFamily: _mono, fontSize: 11, color: Pal.inkFaint)),
-            if (head.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220),
-                child: SingleChildScrollView(child: Text(head, style: TextStyle(fontSize: 13, height: 1.45, color: Pal.inkDim))),
-              ),
-            ],
-            const SizedBox(height: 18),
-            Row(children: [
-              GestureDetector(
-                onTap: () {
-                  _prefs!.setString('skipVersion', ver);
-                  Navigator.pop(ctx);
-                },
-                child: Text('ПРОПУСТИТЬ', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkFaint)),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => Navigator.pop(ctx),
-                child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), child: Text('ПОЗЖЕ', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim))),
-              ),
-              const SizedBox(width: 6),
-              GestureDetector(
-                onTap: () {
-                  _vpn.invokeMethod('openUrl', {'url': url});
-                  Navigator.pop(ctx);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-                  decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(11)),
-                  child: Text('ОБНОВИТЬ', style: TextStyle(fontFamily: _mono, fontSize: 12, fontWeight: FontWeight.w700, color: Pal.accentInk)),
-                ),
-              ),
-            ]),
-          ]),
-        ),
+      builder: (_) => _UpdateDialog(
+        ver: ver,
+        notes: notes,
+        url: url,
+        current: appVer,
+        onSkip: () => _prefs!.setString('skipVersion', ver),
       ),
     );
   }
@@ -1262,4 +1217,122 @@ class _OnboardingState extends State<_Onboarding> {
           const SizedBox(height: 14),
         ]),
       );
+}
+
+// ===================== UPDATE DIALOG =====================
+/// Update prompt → on «ОБНОВИТЬ» downloads the APK in-app (silent, with a
+/// progress bar) via the native channel, then the system installer's
+/// Update/Cancel modal appears. Updating over the same signature keeps all
+/// servers/settings (they live in SharedPreferences).
+class _UpdateDialog extends StatefulWidget {
+  final String ver, notes, url, current;
+  final VoidCallback onSkip;
+  const _UpdateDialog({required this.ver, required this.notes, required this.url, required this.current, required this.onSkip});
+  @override
+  State<_UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<_UpdateDialog> {
+  bool _downloading = false;
+  bool _needPermission = false;
+  int _pct = 0;
+  StreamSubscription? _sub;
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
+    setState(() => _needPermission = false);
+    String? res;
+    try {
+      res = await _vpn.invokeMethod<String>('installUpdate', {'url': widget.url});
+    } catch (_) {
+      res = 'error';
+    }
+    if (!mounted) return;
+    if (res == 'permission') {
+      setState(() => _needPermission = true);
+    } else if (res == 'downloading') {
+      setState(() => _downloading = true);
+      _sub = _updateProgress.receiveBroadcastStream().listen(
+        (e) { if (mounted) setState(() => _pct = (e as num).toInt()); },
+        onError: (_) { if (mounted) setState(() => _downloading = false); },
+      );
+    } else {
+      setState(() => _downloading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final head = widget.notes.trim().split('\n').take(10).join('\n').trim();
+    return Dialog(
+      backgroundColor: Pal.dark ? const Color(0xFF1A1714) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(Icons.system_update, color: Pal.accent, size: 22),
+            const SizedBox(width: 10),
+            Text('ОБНОВЛЕНИЕ', style: TextStyle(fontFamily: _mono, fontSize: 13, letterSpacing: 2, fontWeight: FontWeight.w700, color: Pal.ink)),
+          ]),
+          const SizedBox(height: 14),
+          Text('Доступна версия ${widget.ver}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Pal.accent)),
+          const SizedBox(height: 4),
+          Text('у вас ${widget.current}', style: TextStyle(fontFamily: _mono, fontSize: 11, color: Pal.inkFaint)),
+          if (_downloading) ...[
+            const SizedBox(height: 18),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: _pct >= 100 ? null : _pct / 100,
+                minHeight: 8,
+                backgroundColor: Pal.hair,
+                valueColor: AlwaysStoppedAnimation<Color>(Pal.accent),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(_pct >= 100 ? 'Запуск установщика…' : 'Загрузка обновления… $_pct%',
+                style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim)),
+          ] else if (_needPermission) ...[
+            const SizedBox(height: 14),
+            Text('Разрешите установку приложений из этого источника в открывшихся настройках, затем нажмите «ОБНОВИТЬ» снова.',
+                style: TextStyle(fontSize: 13, height: 1.4, color: Pal.inkDim)),
+          ] else if (head.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: SingleChildScrollView(child: Text(head, style: TextStyle(fontSize: 13, height: 1.45, color: Pal.inkDim))),
+            ),
+          ],
+          const SizedBox(height: 18),
+          if (!_downloading)
+            Row(children: [
+              GestureDetector(
+                onTap: () { widget.onSkip(); Navigator.pop(context); },
+                child: Text('ПРОПУСТИТЬ', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkFaint)),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), child: Text('ОТМЕНА', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim))),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: _start,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                  decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(11)),
+                  child: Text('ОБНОВИТЬ', style: TextStyle(fontFamily: _mono, fontSize: 12, fontWeight: FontWeight.w700, color: Pal.accentInk)),
+                ),
+              ),
+            ]),
+        ]),
+      ),
+    );
+  }
 }

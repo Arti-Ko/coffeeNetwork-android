@@ -8,13 +8,17 @@ import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.net.VpnService
 import android.os.Build
+import android.provider.Settings
 import android.util.Base64
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -23,10 +27,16 @@ class MainActivity : FlutterActivity() {
     private val reqVpn = 0x2701
     private var pendingConfig: String? = null
     private var pendingExclude: ArrayList<String> = arrayListOf()
+    private var progressSink: EventChannel.EventSink? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         App.init(this)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "coffeenetwork/update_progress")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { progressSink = events }
+                override fun onCancel(arguments: Any?) { progressSink = null }
+            })
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "connect" -> {
@@ -85,6 +95,24 @@ class MainActivity : FlutterActivity() {
                         result.error("openUrl", e.message, null)
                     }
                 }
+                // Download the update APK to cacheDir (progress → update_progress
+                // EventChannel) and hand it to the system installer. Requires the
+                // user to allow "install unknown apps" once (we route them there).
+                "installUpdate" -> {
+                    val url = call.argument<String>("url") ?: ""
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                        try {
+                            startActivity(
+                                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        } catch (_: Exception) {}
+                        result.success("permission")
+                    } else {
+                        result.success("downloading")
+                        Thread { downloadAndInstall(url) }.start()
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -104,6 +132,53 @@ class MainActivity : FlutterActivity() {
         if (requestCode == reqVpn && resultCode == Activity.RESULT_OK) {
             pendingConfig?.let { startVpn(it, pendingExclude) }
         }
+    }
+
+    /// Stream the APK to cacheDir, reporting percent over the EventChannel, then
+    /// launch the system package installer via FileProvider.
+    private fun downloadAndInstall(url: String) {
+        try {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = true
+            conn.connectTimeout = 15000
+            conn.readTimeout = 30000
+            conn.connect()
+            val total = conn.contentLength.toLong()
+            val apk = File(cacheDir, "update.apk")
+            conn.inputStream.use { input ->
+                apk.outputStream().use { output ->
+                    val buf = ByteArray(64 * 1024)
+                    var done = 0L
+                    var lastPct = -1
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        output.write(buf, 0, n)
+                        done += n
+                        if (total > 0) {
+                            val pct = (done * 100 / total).toInt()
+                            if (pct != lastPct) {
+                                lastPct = pct
+                                runOnUiThread { progressSink?.success(pct) }
+                            }
+                        }
+                    }
+                }
+            }
+            conn.disconnect()
+            runOnUiThread { progressSink?.success(100) }
+            installApk(apk)
+        } catch (e: Exception) {
+            runOnUiThread { progressSink?.error("download", e.message ?: "download failed", null) }
+        }
+    }
+
+    private fun installApk(apk: File) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apk)
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
     }
 
     private fun traffic(): String {
