@@ -235,8 +235,8 @@ object SingBoxConfig {
         }
         val dns = JSONObject()
             .put("servers", JSONArray()
-                .put(JSONObject().put("type", "https").put("tag", "remote").put("server", "1.1.1.1").put("detour", PROXY))
-                .put(JSONObject().put("type", "https").put("tag", "local-ru").put("server", "77.88.8.8")))
+                .put(JSONObject().put("type", "udp").put("tag", "remote").put("server", "1.1.1.1").put("detour", PROXY))
+                .put(JSONObject().put("type", "udp").put("tag", "local-ru").put("server", "77.88.8.8")))
             .put("rules", dnsRules)
             .put("final", "remote")
             // ipv4_only (verified on-device): the proxy carries IPv4 only, so any
