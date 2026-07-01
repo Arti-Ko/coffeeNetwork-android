@@ -82,6 +82,7 @@ class MainActivity : FlutterActivity() {
                         .put("name", p.name).put("protocol", p.protocol)
                         .put("host", p.host).put("port", p.port).toString())
                 }
+                "getLog" -> result.success(CoffeeVpnService.getLog())
                 "traffic" -> result.success(traffic())
                 "listApps" -> result.success(listApps())
                 "appVersion" -> result.success(

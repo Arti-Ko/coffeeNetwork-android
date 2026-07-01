@@ -632,7 +632,7 @@ class _ServersPage extends StatelessWidget {
               builder: (_) => _ExclSheet(state: state),
             ))),
             const SizedBox(width: 8),
-            Expanded(child: _ghost('LOG', () => state.snack('Лог ядра — позже'))),
+            Expanded(child: _ghost('LOG', () => _showLog(context))),
             const SizedBox(width: 8),
             Expanded(child: _ghost('НАСТР', () => _settingsSheet(context))),
           ]),
@@ -704,6 +704,68 @@ class _ServersPage extends StatelessWidget {
             if (ctx.mounted) Navigator.pop(ctx);
             if (n > 0) state.snack('+$n сервер(ов)'); else state.snack('Не распознал ссылку', err: true);
           }),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _showLog(BuildContext context) async {
+    String text;
+    try {
+      text = await _vpn.invokeMethod<String>('getLog') ?? '';
+      if (text.isEmpty) text = '— лог пуст —';
+    } catch (_) {
+      text = '— не удалось получить лог —';
+    }
+    if (!context.mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Pal.dark ? const Color(0xFF1A1714) : Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.65,
+        maxChildSize: 0.95,
+        minChildSize: 0.3,
+        builder: (_, ctrl) => Column(children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                color: Pal.inkDim.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+            child: Row(children: [
+              Text('Лог ядра',
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Pal.ink)),
+            ]),
+          ),
+          Expanded(
+            child: Scrollbar(
+              controller: ctrl,
+              child: SingleChildScrollView(
+                controller: ctrl,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                child: SelectableText(
+                  text,
+                  style: TextStyle(
+                      fontFamily: _mono,
+                      fontSize: 11,
+                      height: 1.5,
+                      color: Pal.inkDim),
+                ),
+              ),
+            ),
+          ),
         ]),
       ),
     );

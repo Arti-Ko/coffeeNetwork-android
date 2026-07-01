@@ -55,6 +55,18 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             private set
         @Volatile var lastError: String? = null
         private var libboxSetup = false
+
+        private val logBuffer = ArrayDeque<String>(500)
+        private const val LOG_MAX = 500
+
+        fun appendLog(line: String) {
+            synchronized(logBuffer) {
+                if (logBuffer.size >= LOG_MAX) logBuffer.removeFirst()
+                logBuffer.addLast(line)
+            }
+        }
+
+        fun getLog(): String = synchronized(logBuffer) { logBuffer.joinToString("\n") }
     }
 
     private var commandServer: CommandServer? = null
@@ -377,7 +389,11 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     override fun getSystemProxyStatus(): SystemProxyStatus = SystemProxyStatus().apply { available = false }
     override fun setSystemProxyEnabled(isEnabled: Boolean) {}
     override fun triggerNativeCrash() {}
-    override fun writeDebugMessage(message: String?) { Log.d(TAG, message ?: "") }
+    override fun writeDebugMessage(message: String?) {
+        val line = message ?: return
+        Log.d(TAG, line)
+        appendLog(line)
+    }
     override fun connectSSHAgent(): Int = -1
 
     // ---- helpers ----
