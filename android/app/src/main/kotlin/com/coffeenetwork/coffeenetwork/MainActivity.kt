@@ -48,7 +48,7 @@ class MainActivity : FlutterActivity() {
                     if (parsed == null) {
                         result.error("parse", "Не удалось распознать ссылку сервера", null); return@setMethodCallHandler
                     }
-                    val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isCellular())
+                    val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isCellular(), filesDir.resolve("sing-box.log").path)
                     pendingConfig = cfg
                     pendingExclude = ArrayList(exclude)
                     // remember for the Quick Settings tile
@@ -82,7 +82,10 @@ class MainActivity : FlutterActivity() {
                         .put("name", p.name).put("protocol", p.protocol)
                         .put("host", p.host).put("port", p.port).toString())
                 }
-                "getLog" -> result.success(CoffeeVpnService.getLog())
+                "getLog" -> {
+                    val logFile = filesDir.resolve("sing-box.log")
+                    result.success(if (logFile.exists()) logFile.readText() else "")
+                }
                 "traffic" -> result.success(traffic())
                 "listApps" -> result.success(listApps())
                 "appVersion" -> result.success(

@@ -55,18 +55,6 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             private set
         @Volatile var lastError: String? = null
         private var libboxSetup = false
-
-        private val logBuffer = ArrayDeque<String>(500)
-        private const val LOG_MAX = 500
-
-        fun appendLog(line: String) {
-            synchronized(logBuffer) {
-                if (logBuffer.size >= LOG_MAX) logBuffer.removeFirst()
-                logBuffer.addLast(line)
-            }
-        }
-
-        fun getLog(): String = synchronized(logBuffer) { logBuffer.joinToString("\n") }
     }
 
     private var commandServer: CommandServer? = null
@@ -119,7 +107,7 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         val exclude = prefs.getStringSet("exclude", emptySet())?.toList() ?: emptyList()
         try {
             val parsed = SingBoxConfig.parseLink(link) ?: return
-            val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isMobile)
+            val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isMobile, filesDir.resolve("sing-box.log").path)
             val override = OverrideOptions().apply {
                 if (exclude.isNotEmpty()) excludePackage = StringArray(exclude + packageName)
             }
@@ -389,11 +377,7 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     override fun getSystemProxyStatus(): SystemProxyStatus = SystemProxyStatus().apply { available = false }
     override fun setSystemProxyEnabled(isEnabled: Boolean) {}
     override fun triggerNativeCrash() {}
-    override fun writeDebugMessage(message: String?) {
-        val line = message ?: return
-        Log.d(TAG, line)
-        appendLog(line)
-    }
+    override fun writeDebugMessage(message: String?) { Log.d(TAG, message ?: "") }
     override fun connectSSHAgent(): Int = -1
 
     // ---- helpers ----

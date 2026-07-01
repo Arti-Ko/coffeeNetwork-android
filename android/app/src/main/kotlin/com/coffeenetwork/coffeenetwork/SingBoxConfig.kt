@@ -213,20 +213,20 @@ object SingBoxConfig {
     /**
      * Build the full sing-box config (Android TUN) for [outbound].
      *
-     * [isMobile] — true when the device is on cellular data.
-     * For Hysteria2: limits bandwidth to 25/25 Mbps on mobile (prevents carrier DPI from
-     * dropping UDP floods) or 100/100 Mbps on WiFi. Server-specified limits in the link
-     * URL take priority over these defaults.
+     * [isMobile] — true when the device is on cellular data. For Hysteria2: caps bandwidth
+     * at 10/10 Mbps on mobile to stay below carrier DPI rate-limits that drop aggressive
+     * UDP floods. On WiFi: no cap (BBR auto-detection). URL-specified ?up=N&down=N take priority.
+     * [logPath] — if non-empty, sing-box writes its log to this file (level: info).
      */
-    fun build(outbound: JSONObject, bypassRu: Boolean, cachePath: String, isMobile: Boolean = false): String {
+    fun build(outbound: JSONObject, bypassRu: Boolean, cachePath: String, isMobile: Boolean = false, logPath: String = ""): String {
         val proxy = JSONObject(outbound.toString()).put("tag", PROXY)
 
         if (proxy.optString("type") == "hysteria2" && isMobile) {
             // On cellular only: cap bandwidth to stay below carrier DPI rate-limits that drop
-            // aggressive UDP floods. On WiFi: leave unset so Hysteria2 uses BBR auto-detection
-            // (explicit limits on WiFi switch BBR off and break the connection for many servers).
-            if (!proxy.has("up_mbps")) proxy.put("up_mbps", 25)
-            if (!proxy.has("down_mbps")) proxy.put("down_mbps", 25)
+            // aggressive UDP floods. 10 Mbps is more conservative than 25 and passes more operators.
+            // On WiFi: leave unset so Hysteria2 uses BBR auto-detection.
+            if (!proxy.has("up_mbps")) proxy.put("up_mbps", 10)
+            if (!proxy.has("down_mbps")) proxy.put("down_mbps", 10)
         }
 
         val dnsRules = JSONArray()
@@ -278,8 +278,11 @@ object SingBoxConfig {
             .put("cache_file", JSONObject().put("enabled", true).put("store_rdrc", true).put("path", cachePath))
             .put("clash_api", JSONObject().put("external_controller", "127.0.0.1:19099"))
 
+        val logObj = JSONObject().put("level", "info").put("timestamp", true)
+        if (logPath.isNotEmpty()) logObj.put("output", logPath)
+
         return JSONObject()
-            .put("log", JSONObject().put("level", "warn").put("timestamp", true))
+            .put("log", logObj)
             .put("dns", dns)
             .put("inbounds", inbounds)
             .put("outbounds", JSONArray().put(proxy).put(JSONObject().put("type", "direct").put("tag", "direct")))
