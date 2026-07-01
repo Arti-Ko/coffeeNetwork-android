@@ -221,8 +221,13 @@ object SingBoxConfig {
     fun build(outbound: JSONObject, bypassRu: Boolean, cachePath: String, isMobile: Boolean = false, logPath: String = ""): String {
         val proxy = JSONObject(outbound.toString()).put("tag", PROXY)
 
-        // No explicit bandwidth cap: Hysteria2 uses BBR auto-detection on both WiFi and cellular.
-        // Explicit up_mbps/down_mbps from the URL (?up=N&down=N) are preserved if present.
+        if (proxy.optString("type") == "hysteria2" && isMobile) {
+            // Cellular: cap at 10 Mbps to prevent BBR from sending at full rate on first burst.
+            // Without this, some operators drop the QUIC session before the tunnel establishes.
+            // URL ?up=N&down=N takes priority over this default.
+            if (!proxy.has("up_mbps")) proxy.put("up_mbps", 10)
+            if (!proxy.has("down_mbps")) proxy.put("down_mbps", 10)
+        }
 
         val dnsRules = JSONArray()
         if (bypassRu) {
@@ -230,7 +235,11 @@ object SingBoxConfig {
         }
         val dns = JSONObject()
             .put("servers", JSONArray()
-                .put(JSONObject().put("type", "https").put("tag", "remote").put("server", "1.1.1.1").put("detour", PROXY))
+                // Direct DoH — no proxy dependency for DNS. Traffic routing still sends
+                // non-RU IPs through the proxy based on geoip rules. DNS-over-HTTPS to
+                // 8.8.8.8 works on all networks including cellular without needing the
+                // hysteria2 tunnel to be up first.
+                .put(JSONObject().put("type", "https").put("tag", "remote").put("server", "8.8.8.8"))
                 .put(JSONObject().put("type", "https").put("tag", "local-ru").put("server", "77.88.8.8")))
             .put("rules", dnsRules)
             .put("final", "remote")
