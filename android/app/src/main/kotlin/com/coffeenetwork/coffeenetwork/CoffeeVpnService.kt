@@ -8,7 +8,9 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.IpPrefix
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -59,6 +61,63 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     private var pfd: ParcelFileDescriptor? = null
     private var excludePackages: List<String> = emptyList()
 
+    // Tracks the last known physical network type so we can detect WiFi↔cellular transitions
+    // and hot-reload the sing-box config with appropriate bandwidth limits.
+    private var lastWasCellular: Boolean? = null
+    private val networkTypeCallback = object : android.net.ConnectivityManager.NetworkCallback() {
+        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = checkNetworkType()
+        override fun onLost(network: Network) = checkNetworkType()
+    }
+
+    private fun checkNetworkType() {
+        val isCellular = currentlyOnCellular()
+        val prev = lastWasCellular
+        lastWasCellular = isCellular
+        if (prev != null && prev != isCellular) {
+            Log.i(TAG, "Network type changed → cellular=$isCellular; reloading sing-box config")
+            Thread { reconnectWithNewType(isCellular) }.start()
+        }
+    }
+
+    /** Same WiFi-priority logic as MainActivity.isCellular(). */
+    private fun currentlyOnCellular(): Boolean {
+        val cm = App.connectivity
+        var hasCellular = false
+        for (net in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(net) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return false
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) hasCellular = true
+        }
+        return hasCellular
+    }
+
+    /**
+     * Hot-reload sing-box with updated bandwidth limits for the new network type.
+     * Reads the last-used connection params from SharedPreferences (written by MainActivity on connect).
+     * Uses startOrReloadService — TUN stays up, only the outbound config changes.
+     */
+    private fun reconnectWithNewType(isMobile: Boolean) {
+        if (!running) return
+        val server = commandServer ?: return
+        val prefs = getSharedPreferences("coffee", MODE_PRIVATE)
+        val link = prefs.getString("link", null) ?: return
+        val bypassRu = prefs.getBoolean("bypassRu", true)
+        val exclude = prefs.getStringSet("exclude", emptySet())?.toList() ?: emptyList()
+        try {
+            val parsed = SingBoxConfig.parseLink(link) ?: return
+            val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isMobile)
+            val override = OverrideOptions().apply {
+                if (exclude.isNotEmpty()) excludePackage = StringArray(exclude + packageName)
+            }
+            server.startOrReloadService(cfg, override)
+            Log.i(TAG, "Config reloaded for ${if (isMobile) "cellular" else "WiFi"}")
+        } catch (e: Exception) {
+            Log.e(TAG, "reconnectWithNewType failed", e)
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         App.init(this)
         when (intent?.action) {
@@ -106,6 +165,13 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             }
             server.startOrReloadService(config, override)
             running = true
+            // Register after running=true so checkNetworkType() can safely call reconnectWithNewType()
+            lastWasCellular = null
+            try {
+                App.connectivity.registerNetworkCallback(NetworkRequest.Builder().build(), networkTypeCallback)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not register network callback", e)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "startVpn", e)
             lastError = e.message ?: e.toString()
@@ -115,6 +181,7 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
 
     private fun stopVpn() {
         running = false
+        try { App.connectivity.unregisterNetworkCallback(networkTypeCallback) } catch (_: Exception) {}
         try { commandServer?.closeService() } catch (_: Exception) {}
         try { runBlocking { DefaultNetworkMonitor.stop() } } catch (_: Exception) {}
         try { commandServer?.close() } catch (_: Exception) {}

@@ -71,6 +71,9 @@ object SingBoxConfig {
         if (!obfs.isNullOrBlank() && !obfsPass.isNullOrBlank()) {
             ob.put("obfs", JSONObject().put("type", obfs).put("password", obfsPass))
         }
+        // Store explicit bandwidth params from URL so build() can honour server-specified limits
+        uri.getQueryParameter("up")?.toIntOrNull()?.let { ob.put("up_mbps", it) }
+        uri.getQueryParameter("down")?.toIntOrNull()?.let { ob.put("down_mbps", it) }
         return Parsed(nameFrom(uri, "HY2 $host"), "hysteria2", host, port, ob)
     }
 
@@ -207,9 +210,24 @@ object SingBoxConfig {
         .put("type", "remote").put("tag", tag).put("format", "binary")
         .put("url", url).put("download_detour", "direct").put("update_interval", "72h")
 
-    /** Build the full sing-box config (Android TUN) for [outbound]. */
-    fun build(outbound: JSONObject, bypassRu: Boolean, cachePath: String): String {
+    /**
+     * Build the full sing-box config (Android TUN) for [outbound].
+     *
+     * [isMobile] — true when the device is on cellular data.
+     * For Hysteria2: limits bandwidth to 25/25 Mbps on mobile (prevents carrier DPI from
+     * dropping UDP floods) or 100/100 Mbps on WiFi. Server-specified limits in the link
+     * URL take priority over these defaults.
+     */
+    fun build(outbound: JSONObject, bypassRu: Boolean, cachePath: String, isMobile: Boolean = false): String {
         val proxy = JSONObject(outbound.toString()).put("tag", PROXY)
+
+        if (proxy.optString("type") == "hysteria2") {
+            // Apply bandwidth defaults only when the link URL didn't set them explicitly.
+            // Cellular: 25 Mbps — stays below the typical carrier DPI rate-limit that drops
+            // aggressive UDP bursts. WiFi: 100 Mbps — no rate-limit concern on LAN.
+            if (!proxy.has("up_mbps")) proxy.put("up_mbps", if (isMobile) 25 else 100)
+            if (!proxy.has("down_mbps")) proxy.put("down_mbps", if (isMobile) 25 else 100)
+        }
 
         val dnsRules = JSONArray()
         if (bypassRu) {

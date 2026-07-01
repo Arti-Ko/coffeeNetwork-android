@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.net.VpnService
 import android.os.Build
@@ -47,7 +48,7 @@ class MainActivity : FlutterActivity() {
                     if (parsed == null) {
                         result.error("parse", "Не удалось распознать ссылку сервера", null); return@setMethodCallHandler
                     }
-                    val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path)
+                    val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isCellular())
                     pendingConfig = cfg
                     pendingExclude = ArrayList(exclude)
                     // remember for the Quick Settings tile
@@ -171,6 +172,23 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             runOnUiThread { progressSink?.error("download", e.message ?: "download failed", null) }
         }
+    }
+
+    /**
+     * Returns true when the best available physical (non-VPN) network is cellular.
+     * WiFi takes priority: if WiFi is up alongside cellular, returns false.
+     */
+    private fun isCellular(): Boolean {
+        val cm = App.connectivity
+        var hasCellular = false
+        for (net in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(net) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return false
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) hasCellular = true
+        }
+        return hasCellular
     }
 
     private fun installApk(apk: File) {
