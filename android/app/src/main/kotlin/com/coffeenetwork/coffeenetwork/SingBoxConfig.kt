@@ -221,13 +221,8 @@ object SingBoxConfig {
     fun build(outbound: JSONObject, bypassRu: Boolean, cachePath: String, isMobile: Boolean = false, logPath: String = ""): String {
         val proxy = JSONObject(outbound.toString()).put("tag", PROXY)
 
-        if (proxy.optString("type") == "hysteria2" && isMobile) {
-            // On cellular only: cap bandwidth to stay below carrier DPI rate-limits that drop
-            // aggressive UDP floods. 10 Mbps is more conservative than 25 and passes more operators.
-            // On WiFi: leave unset so Hysteria2 uses BBR auto-detection.
-            if (!proxy.has("up_mbps")) proxy.put("up_mbps", 10)
-            if (!proxy.has("down_mbps")) proxy.put("down_mbps", 10)
-        }
+        // No explicit bandwidth cap: Hysteria2 uses BBR auto-detection on both WiFi and cellular.
+        // Explicit up_mbps/down_mbps from the URL (?up=N&down=N) are preserved if present.
 
         val dnsRules = JSONArray()
         if (bypassRu) {
@@ -235,8 +230,8 @@ object SingBoxConfig {
         }
         val dns = JSONObject()
             .put("servers", JSONArray()
-                .put(JSONObject().put("type", "udp").put("tag", "remote").put("server", "1.1.1.1").put("detour", PROXY))
-                .put(JSONObject().put("type", "udp").put("tag", "local-ru").put("server", "77.88.8.8")))
+                .put(JSONObject().put("type", "https").put("tag", "remote").put("server", "1.1.1.1").put("detour", PROXY))
+                .put(JSONObject().put("type", "https").put("tag", "local-ru").put("server", "77.88.8.8")))
             .put("rules", dnsRules)
             .put("final", "remote")
             // ipv4_only (verified on-device): the proxy carries IPv4 only, so any

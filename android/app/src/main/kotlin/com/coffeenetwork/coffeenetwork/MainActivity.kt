@@ -86,6 +86,10 @@ class MainActivity : FlutterActivity() {
                     val logFile = filesDir.resolve("sing-box.log")
                     result.success(if (logFile.exists()) logFile.readText() else "")
                 }
+                "clearLog" -> {
+                    filesDir.resolve("sing-box.log").delete()
+                    result.success(null)
+                }
                 "traffic" -> result.success(traffic())
                 "listApps" -> result.success(listApps())
                 "appVersion" -> result.success(

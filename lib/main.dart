@@ -724,52 +724,83 @@ class _ServersPage extends StatelessWidget {
       backgroundColor: Pal.dark ? const Color(0xFF1A1714) : Colors.white,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.65,
-        maxChildSize: 0.95,
-        minChildSize: 0.3,
-        builder: (_, ctrl) => Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                color: Pal.inkDim.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(2)),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (ctx, setModalState) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.65,
+          maxChildSize: 0.95,
+          minChildSize: 0.3,
+          builder: (_, ctrl) => Column(children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: Pal.inkDim.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(2)),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-            child: Row(children: [
-              Text('Лог ядра',
-                  style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Pal.ink)),
-            ]),
-          ),
-          Expanded(
-            child: Scrollbar(
-              controller: ctrl,
-              child: SingleChildScrollView(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 10, 12),
+              child: Row(children: [
+                Text('Лог ядра',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Pal.ink)),
+                const Spacer(),
+                _logBtn('КОПИРОВАТЬ', () {
+                  Clipboard.setData(ClipboardData(text: text));
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                      content: Text('Скопировано'),
+                      duration: Duration(seconds: 2)));
+                }),
+                const SizedBox(width: 8),
+                _logBtn('ОЧИСТИТЬ', () async {
+                  await _vpn.invokeMethod('clearLog');
+                  setModalState(() => text = '— лог пуст —');
+                }),
+                const SizedBox(width: 8),
+              ]),
+            ),
+            Expanded(
+              child: Scrollbar(
                 controller: ctrl,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                child: SelectableText(
-                  text,
-                  style: TextStyle(
-                      fontFamily: _mono,
-                      fontSize: 11,
-                      height: 1.5,
-                      color: Pal.inkDim),
+                child: SingleChildScrollView(
+                  controller: ctrl,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  child: SelectableText(
+                    text,
+                    style: TextStyle(
+                        fontFamily: _mono,
+                        fontSize: 11,
+                        height: 1.5,
+                        color: Pal.inkDim),
+                  ),
                 ),
               ),
             ),
-          ),
-        ]),
+          ]),
+        ),
       ),
     );
   }
+
+  Widget _logBtn(String label, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+          decoration: BoxDecoration(
+              border: Border.all(color: Pal.hair),
+              borderRadius: BorderRadius.circular(8)),
+          child: Text(label,
+              style: TextStyle(
+                  fontFamily: _mono,
+                  fontSize: 10,
+                  letterSpacing: 1.0,
+                  color: Pal.inkDim)),
+        ),
+      );
 
   void _settingsSheet(BuildContext context) {
     var hsv = HSVColor.fromColor(Pal.accent);
