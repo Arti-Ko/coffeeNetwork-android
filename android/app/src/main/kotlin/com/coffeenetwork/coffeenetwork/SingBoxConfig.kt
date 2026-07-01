@@ -235,11 +235,9 @@ object SingBoxConfig {
         }
         val dns = JSONObject()
             .put("servers", JSONArray()
-                // Direct DoH — no proxy dependency for DNS. Traffic routing still sends
-                // non-RU IPs through the proxy based on geoip rules. DNS-over-HTTPS to
-                // 8.8.8.8 works on all networks including cellular without needing the
-                // hysteria2 tunnel to be up first.
-                .put(JSONObject().put("type", "https").put("tag", "remote").put("server", "8.8.8.8"))
+                // Non-RU DNS goes through the proxy so the Russian ISP cannot see or
+                // block queries to foreign domains (DNS censorship bypass).
+                .put(JSONObject().put("type", "https").put("tag", "remote").put("server", "1.1.1.1").put("detour", PROXY))
                 .put(JSONObject().put("type", "https").put("tag", "local-ru").put("server", "77.88.8.8")))
             .put("rules", dnsRules)
             .put("final", "remote")
