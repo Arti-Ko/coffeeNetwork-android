@@ -222,11 +222,13 @@ object SingBoxConfig {
         val proxy = JSONObject(outbound.toString()).put("tag", PROXY)
 
         if (proxy.optString("type") == "hysteria2" && isMobile) {
-            // Cellular: cap at 10 Mbps to prevent BBR from sending at full rate on first burst.
-            // Without this, some operators drop the QUIC session before the tunnel establishes.
-            // URL ?up=N&down=N takes priority over this default.
-            if (!proxy.has("up_mbps")) proxy.put("up_mbps", 10)
-            if (!proxy.has("down_mbps")) proxy.put("down_mbps", 10)
+            // Force 10 Mbps cap on cellular — always override, even if ?up=N&down=N is in the URL.
+            // parseHysteria2 stores URL bandwidth params in the outbound, so the old "if absent"
+            // guard let them through. Without the cap, hysteria2 uses BBR mode which makes a large
+            // initial burst; Russian mobile operators' DPI sees this as a UDP flood and drops the
+            // QUIC session before the tunnel establishes.
+            proxy.put("up_mbps", 10)
+            proxy.put("down_mbps", 10)
         }
 
         val dnsRules = JSONArray()

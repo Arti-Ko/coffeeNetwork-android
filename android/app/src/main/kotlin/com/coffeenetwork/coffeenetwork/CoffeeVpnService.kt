@@ -113,9 +113,41 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             }
             server.startOrReloadService(cfg, override)
             Log.i(TAG, "Config reloaded for ${if (isMobile) "cellular" else "WiFi"}")
+            warmupProxy()
         } catch (e: Exception) {
             Log.e(TAG, "reconnectWithNewType failed", e)
         }
+    }
+
+    /**
+     * Eagerly warms up the hysteria2 QUIC tunnel via the Clash API delay test.
+     *
+     * sing-box connects to proxy outbounds lazily — only when the first traffic needs them.
+     * On cellular with ~100-150 ms RTT the QUIC handshake can take 300-500 ms; if the first
+     * DNS query's timeout fires before the tunnel is up, the browser shows "no connection"
+     * and never retries long enough for the tunnel to establish.
+     *
+     * By probing /proxies/proxy/delay right after startup we force sing-box to bring up the
+     * hysteria2 connection before user traffic arrives, so DNS-over-HTTPS via proxy resolves
+     * immediately for the first real request.
+     */
+    private fun warmupProxy(startDelayMs: Long = 2500L) {
+        Thread {
+            Thread.sleep(startDelayMs)
+            if (!running) return@Thread
+            try {
+                val url = "http://127.0.0.1:19099/proxies/${SingBoxConfig.PROXY}/delay" +
+                    "?timeout=8000&url=https://www.gstatic.com/generate_204"
+                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 600
+                conn.readTimeout = 10_000
+                val code = conn.responseCode
+                conn.disconnect()
+                Log.i(TAG, "Proxy warmup: HTTP $code")
+            } catch (e: Exception) {
+                Log.d(TAG, "Proxy warmup ended: ${e.message}")
+            }
+        }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -164,6 +196,7 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 }
             }
             server.startOrReloadService(config, override)
+            warmupProxy()
             running = true
             // Register after running=true so checkNetworkType() can safely call reconnectWithNewType()
             lastWasCellular = null
