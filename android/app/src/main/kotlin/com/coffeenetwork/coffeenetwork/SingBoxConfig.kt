@@ -221,12 +221,12 @@ object SingBoxConfig {
     fun build(outbound: JSONObject, bypassRu: Boolean, cachePath: String, isMobile: Boolean = false): String {
         val proxy = JSONObject(outbound.toString()).put("tag", PROXY)
 
-        if (proxy.optString("type") == "hysteria2") {
-            // Apply bandwidth defaults only when the link URL didn't set them explicitly.
-            // Cellular: 25 Mbps — stays below the typical carrier DPI rate-limit that drops
-            // aggressive UDP bursts. WiFi: 100 Mbps — no rate-limit concern on LAN.
-            if (!proxy.has("up_mbps")) proxy.put("up_mbps", if (isMobile) 25 else 100)
-            if (!proxy.has("down_mbps")) proxy.put("down_mbps", if (isMobile) 25 else 100)
+        if (proxy.optString("type") == "hysteria2" && isMobile) {
+            // On cellular only: cap bandwidth to stay below carrier DPI rate-limits that drop
+            // aggressive UDP floods. On WiFi: leave unset so Hysteria2 uses BBR auto-detection
+            // (explicit limits on WiFi switch BBR off and break the connection for many servers).
+            if (!proxy.has("up_mbps")) proxy.put("up_mbps", 25)
+            if (!proxy.has("down_mbps")) proxy.put("down_mbps", 25)
         }
 
         val dnsRules = JSONArray()
