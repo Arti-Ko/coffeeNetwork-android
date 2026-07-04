@@ -103,10 +103,12 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         val server = commandServer ?: return
         val prefs = getSharedPreferences("coffee", MODE_PRIVATE)
         val link = prefs.getString("link", null) ?: return
+        val mobileLink = prefs.getString("mobile_link", "") ?: ""
         val bypassRu = prefs.getBoolean("bypassRu", true)
         val exclude = prefs.getStringSet("exclude", emptySet())?.toList() ?: emptyList()
+        val activeLink = if (isMobile && mobileLink.isNotBlank()) mobileLink else link
         try {
-            val parsed = SingBoxConfig.parseLink(link) ?: return
+            val parsed = SingBoxConfig.parseLink(activeLink) ?: return
             val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isMobile, filesDir.resolve("sing-box.log").path)
             val override = OverrideOptions().apply {
                 if (exclude.isNotEmpty()) excludePackage = StringArray(exclude + packageName)

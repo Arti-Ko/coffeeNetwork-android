@@ -42,18 +42,22 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "connect" -> {
                     val link = call.argument<String>("link") ?: ""
+                    val mobileLink = call.argument<String>("mobileLink") ?: ""
                     val bypassRu = call.argument<Boolean>("bypassRu") ?: true
                     val exclude = call.argument<List<String>>("exclude") ?: emptyList()
-                    val parsed = SingBoxConfig.parseLink(link)
+                    val isMobile = isCellular()
+                    val activeLink = if (isMobile && mobileLink.isNotBlank()) mobileLink else link
+                    val parsed = SingBoxConfig.parseLink(activeLink)
                     if (parsed == null) {
                         result.error("parse", "Не удалось распознать ссылку сервера", null); return@setMethodCallHandler
                     }
-                    val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isCellular(), filesDir.resolve("sing-box.log").path)
+                    val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isMobile, filesDir.resolve("sing-box.log").path)
                     pendingConfig = cfg
                     pendingExclude = ArrayList(exclude)
-                    // remember for the Quick Settings tile
+                    // remember for the Quick Settings tile and network-type reconnect
                     getSharedPreferences("coffee", MODE_PRIVATE).edit()
                         .putString("link", link)
+                        .putString("mobile_link", mobileLink)
                         .putBoolean("bypassRu", bypassRu)
                         .putStringSet("exclude", exclude.toSet())
                         .apply()

@@ -89,11 +89,24 @@ class Server {
   final String address;
   final int port;
   final String raw;
-  Server(this.id, this.name, this.protocol, this.address, this.port, this.raw);
+  final String? mobileRaw; // optional fallback link for cellular (e.g. VLESS Reality)
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'protocol': protocol, 'address': address, 'port': port, 'raw': raw};
-  static Server fromJson(Map<String, dynamic> j) =>
-      Server(j['id'], j['name'], j['protocol'], j['address'], j['port'], j['raw']);
+  Server(this.id, this.name, this.protocol, this.address, this.port, this.raw,
+      {this.mobileRaw});
+
+  Server withMobile(String? mobile) =>
+      Server(id, name, protocol, address, port, raw, mobileRaw: mobile?.isEmpty == true ? null : mobile);
+
+  Map<String, dynamic> toJson() => {
+        'id': id, 'name': name, 'protocol': protocol,
+        'address': address, 'port': port, 'raw': raw,
+        if (mobileRaw != null && mobileRaw!.isNotEmpty) 'mobileRaw': mobileRaw,
+      };
+  static Server fromJson(Map<String, dynamic> j) => Server(
+        j['id'] as String, j['name'] as String, j['protocol'] as String,
+        j['address'] as String, j['port'] as int, j['raw'] as String,
+        mobileRaw: j['mobileRaw'] as String?,
+      );
 }
 
 class HomeShell extends StatefulWidget {
@@ -325,7 +338,12 @@ class _HomeShellState extends State<HomeShell> {
       if (connected) {
         await _vpn.invokeMethod('disconnect');
       } else {
-        await _vpn.invokeMethod('connect', {'link': active!.raw, 'bypassRu': bypassRu, 'exclude': excluded.toList()});
+        await _vpn.invokeMethod('connect', {
+          'link': active!.raw,
+          'bypassRu': bypassRu,
+          'exclude': excluded.toList(),
+          if ((active!.mobileRaw ?? '').isNotEmpty) 'mobileLink': active!.mobileRaw,
+        });
       }
     } on PlatformException catch (e) {
       if (mounted) setState(() => busy = false);
@@ -660,6 +678,12 @@ class _ServersPage extends StatelessWidget {
             const SizedBox(height: 3),
             Text('${s.address}:${s.port}', style: TextStyle(fontFamily: _mono, fontSize: 11, color: Pal.inkFaint)),
           ])),
+          IconButton(
+            icon: Icon(Icons.signal_cellular_alt, size: 18,
+              color: (s.mobileRaw ?? '').isNotEmpty ? Pal.accent : Pal.inkFaint),
+            tooltip: (s.mobileRaw ?? '').isNotEmpty ? '4G: задан' : '4G: задать',
+            onPressed: () => _mobileSheet(context, s),
+          ),
           IconButton(icon: Icon(Icons.close, size: 18, color: Pal.inkFaint), onPressed: () {
             state.setState(() {
               state.servers.removeWhere((x) => x.id == s.id);
@@ -704,6 +728,63 @@ class _ServersPage extends StatelessWidget {
             if (ctx.mounted) Navigator.pop(ctx);
             if (n > 0) state.snack('+$n сервер(ов)'); else state.snack('Не распознал ссылку', err: true);
           }),
+        ]),
+      ),
+    );
+  }
+
+  void _mobileSheet(BuildContext context, Server s) {
+    final ctrl = TextEditingController(text: s.mobileRaw ?? '');
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Pal.dark ? const Color(0xFF1A1714) : const Color(0xFFFFFFFF),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(left: 18, right: 18, top: 18, bottom: 18 + MediaQuery.of(ctx).viewInsets.bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _label('МОБИЛЬНАЯ ССЫЛКА (4G/5G)'),
+          const SizedBox(height: 6),
+          Text('Используется на мобильном интернете вместо основной',
+            style: TextStyle(fontSize: 12, color: Pal.inkFaint)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            maxLines: 3,
+            style: TextStyle(fontFamily: _mono, fontSize: 13, color: Pal.ink),
+            decoration: InputDecoration(
+              hintText: 'vless:// · hysteria2:// …',
+              hintStyle: TextStyle(fontFamily: _mono, fontSize: 11, color: Pal.inkFaint),
+              filled: true,
+              fillColor: Pal.dark ? const Color(0x66000000) : const Color(0x0D000000),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Pal.hair)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Pal.hair)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Pal.accent)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            if ((s.mobileRaw ?? '').isNotEmpty) ...[
+              Expanded(child: _ghost('УДАЛИТЬ', () {
+                final idx = state.servers.indexWhere((x) => x.id == s.id);
+                if (idx >= 0) {
+                  state.setState(() => state.servers[idx] = state.servers[idx].withMobile(null));
+                  state._save();
+                }
+                Navigator.pop(ctx);
+              })),
+              const SizedBox(width: 8),
+            ],
+            Expanded(child: _solid('СОХРАНИТЬ', () {
+              final trimmed = ctrl.text.trim();
+              final idx = state.servers.indexWhere((x) => x.id == s.id);
+              if (idx >= 0) {
+                state.setState(() => state.servers[idx] = state.servers[idx].withMobile(trimmed.isEmpty ? null : trimmed));
+                state._save();
+              }
+              Navigator.pop(ctx);
+            })),
+          ]),
         ]),
       ),
     );
