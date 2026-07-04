@@ -11,6 +11,7 @@ import android.net.VpnService
 import android.os.Build
 import android.provider.Settings
 import android.util.Base64
+import android.util.Log
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -46,8 +47,10 @@ class MainActivity : FlutterActivity() {
                     val bypassRu = call.argument<Boolean>("bypassRu") ?: true
                     val exclude = call.argument<List<String>>("exclude") ?: emptyList()
                     val isMobile = isCellular()
-                    val activeLink = if (isMobile && mobileLink.isNotBlank()) mobileLink else link
+                    val usingMobile = isMobile && mobileLink.isNotBlank()
+                    val activeLink = if (usingMobile) mobileLink else link
                     val parsed = SingBoxConfig.parseLink(activeLink)
+                    Log.i("CoffeeVpn", "connect: cellular=$isMobile protocol=${parsed?.protocol} mobileLink=$usingMobile server=${parsed?.host}:${parsed?.port}")
                     if (parsed == null) {
                         result.error("parse", "Не удалось распознать ссылку сервера", null); return@setMethodCallHandler
                     }

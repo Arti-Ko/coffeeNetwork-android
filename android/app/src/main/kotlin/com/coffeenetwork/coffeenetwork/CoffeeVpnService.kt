@@ -106,16 +106,18 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         val mobileLink = prefs.getString("mobile_link", "") ?: ""
         val bypassRu = prefs.getBoolean("bypassRu", true)
         val exclude = prefs.getStringSet("exclude", emptySet())?.toList() ?: emptyList()
-        val activeLink = if (isMobile && mobileLink.isNotBlank()) mobileLink else link
+        val usingMobileLink = isMobile && mobileLink.isNotBlank()
+        val activeLink = if (usingMobileLink) mobileLink else link
         try {
             val parsed = SingBoxConfig.parseLink(activeLink) ?: return
+            Log.i(TAG, "reconnect: cellular=$isMobile protocol=${parsed.protocol} mobileLink=$usingMobileLink server=${parsed.host}:${parsed.port}")
             val cfg = SingBoxConfig.build(parsed.outbound, bypassRu, filesDir.resolve("cache.db").path, isMobile, filesDir.resolve("sing-box.log").path)
             val override = OverrideOptions().apply {
                 if (exclude.isNotEmpty()) excludePackage = StringArray(exclude + packageName)
             }
             server.startOrReloadService(cfg, override)
             Log.i(TAG, "Config reloaded for ${if (isMobile) "cellular" else "WiFi"}")
-            warmupProxy()
+            warmupProxy(startDelayMs = 500L)
         } catch (e: Exception) {
             Log.e(TAG, "reconnectWithNewType failed", e)
         }
