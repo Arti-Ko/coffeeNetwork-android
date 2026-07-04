@@ -362,8 +362,43 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<int> importLinks(String text) async {
-    final links = text.split(RegExp(r'\s+')).where((l) => l.contains('://')).toList();
     int added = 0;
+
+    // Handle coffee://bundle single-string format
+    for (final part in text.split(RegExp(r'\s+'))) {
+      if (part.startsWith('coffee://bundle')) {
+        final uri = Uri.tryParse(part);
+        if (uri != null) {
+          final w = uri.queryParameters['w'];
+          final m = uri.queryParameters['m'];
+          if (w != null) {
+            try {
+              final wifiLink = utf8.decode(base64Url.decode(base64Url.normalize(w)));
+              final mobileLink = m != null
+                  ? utf8.decode(base64Url.decode(base64Url.normalize(m)))
+                  : null;
+              final raw = await _vpn.invokeMethod<String>('parse', {'link': wifiLink});
+              if (raw != null) {
+                final j = jsonDecode(raw) as Map<String, dynamic>;
+                final id = '${DateTime.now().microsecondsSinceEpoch}$added';
+                servers.add(Server(
+                  id,
+                  j['name'] as String,
+                  j['protocol'] as String,
+                  j['host'] as String,
+                  j['port'] as int,
+                  wifiLink,
+                  mobileRaw: mobileLink,
+                ));
+                added++;
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
+    final links = text.split(RegExp(r'\s+')).where((l) => l.contains('://') && !l.startsWith('coffee://bundle')).toList();
     for (final l in links) {
       try {
         final raw = await _vpn.invokeMethod<String>('parse', {'link': l});
@@ -785,6 +820,17 @@ class _ServersPage extends StatelessWidget {
               Navigator.pop(ctx);
             })),
           ]),
+          if ((s.mobileRaw ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _ghost('СКОПИРОВАТЬ BUNDLE', () {
+              final w = base64Url.encode(utf8.encode(s.raw));
+              final m = base64Url.encode(utf8.encode(s.mobileRaw!));
+              final bundle = 'coffee://bundle?w=$w&m=$m';
+              Clipboard.setData(ClipboardData(text: bundle));
+              state.snack('Bundle скопирован');
+              Navigator.pop(ctx);
+            }),
+          ],
         ]),
       ),
     );
