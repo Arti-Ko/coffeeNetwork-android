@@ -131,6 +131,9 @@ class _HomeShellState extends State<HomeShell> {
   int upSpeed = 0, downSpeed = 0;
   int _upT = 0, _downT = 0;
   DateTime? _tT;
+  // active protocol/node updated by Kotlin on reconnect (e.g. WiFi→cellular switch)
+  String? _liveProtocol;
+  String? _liveNode;
   bool onboard = false; // first-launch visual tutorial overlay
   String appVer = '0.1.6'; // current version, refreshed from native on launch
 
@@ -319,12 +322,19 @@ class _HomeShellState extends State<HomeShell> {
       } else {
         ds = 0; us = 0; _tT = null;
       }
-      if (mounted && (running != connected || busy || ds != downSpeed || us != upSpeed)) {
+      final ap = j['activeProtocol'] as String?;
+      final ah = j['activeHost'] as String?;
+      final aport = j['activePort'] as int?;
+      final liveNode = (ah != null && aport != null && aport > 0) ? '$ah:$aport' : null;
+      if (mounted && (running != connected || busy || ds != downSpeed || us != upSpeed
+          || ap != _liveProtocol || liveNode != _liveNode)) {
         setState(() {
           connected = running;
           busy = false;
           downSpeed = ds;
           upSpeed = us;
+          _liveProtocol = running ? ap : null;
+          _liveNode = running ? liveNode : null;
         });
       }
     } catch (_) {}
@@ -529,8 +539,8 @@ class _TicketPage extends StatelessWidget {
           const SizedBox(height: 8),
           Divider(height: 1, color: Pal.hair),
           const SizedBox(height: 10),
-          _meta('NODE', a == null ? '—' : '${a.address}:${a.port}'),
-          _meta('PROTOCOL', a?.protocol.toUpperCase() ?? '—'),
+          _meta('NODE', state._liveNode ?? (a == null ? '—' : '${a.address}:${a.port}')),
+          _meta('PROTOCOL', (state._liveProtocol?.toUpperCase()) ?? a?.protocol.toUpperCase() ?? '—'),
           _meta('ROUTING', state.bypassRu ? 'RU-BYPASS' : 'FULL TUNNEL'),
           if (state.connected && !state.busy)
             Padding(

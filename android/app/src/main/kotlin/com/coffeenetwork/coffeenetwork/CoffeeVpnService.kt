@@ -119,6 +119,11 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 if (exclude.isNotEmpty()) excludePackage = StringArray(exclude + packageName)
             }
             server.startOrReloadService(cfg, override)
+            prefs.edit()
+                .putString("active_protocol", parsed.protocol)
+                .putString("active_host", parsed.host)
+                .putInt("active_port", parsed.port)
+                .apply()
             Log.i(TAG, "Config reloaded for ${if (isMobile) "cellular" else "WiFi"}")
             warmupProxy(startDelayMs = 500L)
         } catch (e: Exception) {

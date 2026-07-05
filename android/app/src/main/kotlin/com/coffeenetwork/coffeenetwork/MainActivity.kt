@@ -91,6 +91,9 @@ class MainActivity : FlutterActivity() {
                         .putString("mobile_link", mobileLink)
                         .putBoolean("bypassRu", bypassRu)
                         .putStringSet("exclude", exclude.toSet())
+                        .putString("active_protocol", parsed.protocol)
+                        .putString("active_host", parsed.host)
+                        .putInt("active_port", parsed.port)
                         .apply()
                     val prepare = VpnService.prepare(this)
                     if (prepare != null) {
@@ -105,11 +108,18 @@ class MainActivity : FlutterActivity() {
                     startService(Intent(this, CoffeeVpnService::class.java).setAction(CoffeeVpnService.ACTION_STOP))
                     result.success(true)
                 }
-                "status" -> result.success(
-                    JSONObject()
-                        .put("running", CoffeeVpnService.running)
-                        .put("error", CoffeeVpnService.lastError ?: JSONObject.NULL).toString()
-                )
+                "status" -> {
+                    val sp = getSharedPreferences("coffee", MODE_PRIVATE)
+                    result.success(
+                        JSONObject()
+                            .put("running", CoffeeVpnService.running)
+                            .put("error", CoffeeVpnService.lastError ?: JSONObject.NULL)
+                            .put("activeProtocol", sp.getString("active_protocol", null) ?: JSONObject.NULL)
+                            .put("activeHost", sp.getString("active_host", null) ?: JSONObject.NULL)
+                            .put("activePort", sp.getInt("active_port", 0))
+                            .toString()
+                    )
+                }
                 "parse" -> {
                     val p = SingBoxConfig.parseLink(call.argument<String>("link") ?: "")
                     if (p == null) result.success(null)
