@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _vpn = MethodChannel('coffeenetwork/vpn');
+const _import = MethodChannel('coffeenetwork/import');
 const _mono = 'monospace';
 const _ghRepo = 'Arti-Ko/coffeeNetwork-android'; // GitHub repo for update checks
 const _updateProgress = EventChannel('coffeenetwork/update_progress'); // APK download %
@@ -138,6 +139,15 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     _load();
     _poll = Timer.periodic(const Duration(seconds: 1), (_) => _refreshStatus());
+    _import.setMethodCallHandler((call) async {
+      if (call.method == 'importBundle') {
+        final url = (call.arguments as Map)['url'] as String? ?? '';
+        if (url.isNotEmpty) {
+          final n = await importLinks(url);
+          if (mounted) snack(n > 0 ? 'Импортировано: $n' : 'Ошибка импорта');
+        }
+      }
+    });
     const seed = String.fromEnvironment('SEED');
     if (seed.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => importLinks(seed));

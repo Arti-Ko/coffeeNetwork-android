@@ -107,6 +107,9 @@ class CoffeeVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         val bypassRu = prefs.getBoolean("bypassRu", true)
         val exclude = prefs.getStringSet("exclude", emptySet())?.toList() ?: emptyList()
         val usingMobileLink = isMobile && mobileLink.isNotBlank()
+        if (isMobile && !usingMobileLink) {
+            Log.w(TAG, "reconnect: cellular but no mobile_link set — falling back to WiFi link (hysteria2 may be blocked by DPI). Import a coffee://bundle to fix this.")
+        }
         val activeLink = if (usingMobileLink) mobileLink else link
         try {
             val parsed = SingBoxConfig.parseLink(activeLink) ?: return

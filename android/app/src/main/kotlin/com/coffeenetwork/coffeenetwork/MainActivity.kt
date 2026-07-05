@@ -30,10 +30,38 @@ class MainActivity : FlutterActivity() {
     private var pendingConfig: String? = null
     private var pendingExclude: ArrayList<String> = arrayListOf()
     private var progressSink: EventChannel.EventSink? = null
+    private var importChannel: MethodChannel? = null
+    private var pendingImportUrl: String? = null
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        extractCoffeeUrl(intent)?.let { deliverImport(it) }
+    }
+
+    private fun extractCoffeeUrl(intent: Intent?): String? {
+        val uri = intent?.data ?: return null
+        if (uri.scheme != "coffee") return null
+        return uri.toString()
+    }
+
+    private fun deliverImport(url: String) {
+        val ch = importChannel
+        if (ch == null) {
+            pendingImportUrl = url
+        } else {
+            runOnUiThread { ch.invokeMethod("importBundle", mapOf("url" to url)) }
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         App.init(this)
+        importChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "coffeenetwork/import")
+        pendingImportUrl?.let { url ->
+            pendingImportUrl = null
+            runOnUiThread { importChannel?.invokeMethod("importBundle", mapOf("url" to url)) }
+        }
+        extractCoffeeUrl(intent)?.let { deliverImport(it) }
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "coffeenetwork/update_progress")
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { progressSink = events }
