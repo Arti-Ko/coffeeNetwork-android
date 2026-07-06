@@ -25,7 +25,11 @@ object SingBoxConfig {
 
     /** Parse one share link into an outbound + metadata, or null if unsupported. */
     fun parseLink(raw: String): Parsed? {
-        val link = raw.trim()
+        // Strip ALL whitespace, not just the ends: mobile keyboards (Gboard
+        // autocorrect) inject "word. Word" spaces into pasted/typed links,
+        // silently producing a config with a broken SNI/pbk. Share links never
+        // legitimately contain literal spaces (they must be %20-encoded).
+        val link = raw.trim().replace(Regex("\\s+"), "")
         val scheme = link.substringBefore("://", "").lowercase()
         return try {
             when (scheme) {
@@ -83,6 +87,10 @@ object SingBoxConfig {
         val port = if (uri.port > 0) uri.port else 443
         val uuid = uri.userInfo ?: ""
         val security = uri.getQueryParameter("security") ?: "none"
+        val pbk = uri.getQueryParameter("pbk")
+        // REALITY is signalled either by security=reality or by a pbk param
+        // alone (some panels emit security=tls + pbk) — mirror desktop parser.rs.
+        val hasReality = security == "reality" || !pbk.isNullOrBlank()
         val sni = uri.getQueryParameter("sni") ?: uri.getQueryParameter("host") ?: host
         val flow = uri.getQueryParameter("flow")
         val ob = JSONObject()
@@ -92,21 +100,36 @@ object SingBoxConfig {
             .put("server_port", port)
             .put("uuid", uuid)
         if (!flow.isNullOrBlank()) ob.put("flow", flow)
-        if (security == "tls" || security == "reality") {
+        if (security == "tls" || security == "xtls" || hasReality) {
             val tls = JSONObject().put("enabled", true).put("server_name", sni)
+            uri.getQueryParameter("alpn")?.takeIf { it.isNotBlank() }?.let { a ->
+                tls.put("alpn", JSONArray().apply { a.split(",").filter { it.isNotEmpty() }.forEach { put(it) } })
+            }
+            // uTLS is ALWAYS on with a chrome default (parity with desktop
+            // parser.rs build_tls). REALITY requires uTLS: without it sing-box
+            // sends a plain ClientHello and the server rejects the handshake
+            // ("REALITY: processed invalid connection"), so a link without
+            // fp= used to silently produce a dead tunnel.
             val fp = uri.getQueryParameter("fp")
-            if (!fp.isNullOrBlank()) tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", fp))
-            if (security == "reality") {
-                val pbk = uri.getQueryParameter("pbk") ?: ""
+            tls.put("utls", JSONObject().put("enabled", true)
+                .put("fingerprint", if (fp.isNullOrBlank()) "chrome" else fp))
+            if (hasReality) {
                 val sid = uri.getQueryParameter("sid") ?: ""
-                tls.put("reality", JSONObject().put("enabled", true).put("public_key", pbk).put("short_id", sid))
+                tls.put("reality", JSONObject().put("enabled", true).put("public_key", pbk ?: "").put("short_id", sid))
+            } else if (uri.getQueryParameter("allowInsecure") == "1" || uri.getQueryParameter("insecure") == "1") {
+                // insecure is meaningless under REALITY — only for plain TLS
+                tls.put("insecure", true)
             }
             ob.put("tls", tls)
         }
         val type = uri.getQueryParameter("type")
         if (type == "ws") {
             val path = uri.getQueryParameter("path") ?: "/"
-            ob.put("transport", JSONObject().put("type", "ws").put("path", path))
+            val t = JSONObject().put("type", "ws").put("path", path)
+            uri.getQueryParameter("host")?.takeIf { it.isNotBlank() }?.let { h ->
+                t.put("headers", JSONObject().put("Host", h))
+            }
+            ob.put("transport", t)
         }
         return Parsed(nameFrom(uri, "VLESS $host"), "vless", host, port, ob)
     }
