@@ -21,6 +21,18 @@ object SingBoxConfig {
     private const val RS_GEOSITE_PRIVATE =
         "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-private.srs"
 
+    // Extra RU domains forced DIRECT alongside geosite-category-ru — the geosite
+    // list lags on big e-commerce CDNs (Wildberries/Ozon basket & static hosts),
+    // which otherwise leak through the proxy and get geo-blocked from a foreign
+    // exit. Keep in sync with the desktop client (singbox.rs RU_DIRECT_SUFFIXES).
+    private val RU_DIRECT_SUFFIXES = listOf(
+        "wildberries.ru", "wb.ru", "wbbasket.ru", "wbstatic.net", "wbcontent.net",
+        "wildberries.by", "wildberries.kz",
+        "ozon.ru", "ozon.io", "ozon.travel", "ozonusercontent.com", "ozone.ru",
+        "megamarket.ru", "sbermegamarket.ru", "dns-shop.ru", "citilink.ru",
+        "mvideo.ru", "eldorado.ru", "aliexpress.ru", "lamoda.ru", "detmir.ru",
+    )
+
     data class Parsed(val name: String, val protocol: String, val host: String, val port: Int, val outbound: JSONObject)
 
     /** Parse one share link into an outbound + metadata, or null if unsupported. */
@@ -290,6 +302,10 @@ object SingBoxConfig {
             .put(JSONObject().put("rule_set", JSONArray().put("geosite-private")).put("outbound", "direct"))
         val ruleSets = JSONArray().put(ruleSet("geosite-private", RS_GEOSITE_PRIVATE))
         if (bypassRu) {
+            // Explicit RU e-commerce domains first (covers gaps in the geosite list).
+            routeRules.put(JSONObject()
+                .put("domain_suffix", JSONArray().apply { RU_DIRECT_SUFFIXES.forEach { put(it) } })
+                .put("outbound", "direct"))
             routeRules.put(JSONObject().put("rule_set", JSONArray().put("geosite-category-ru").put("geoip-ru")).put("outbound", "direct"))
             ruleSets.put(ruleSet("geosite-category-ru", RS_GEOSITE_RU))
             ruleSets.put(ruleSet("geoip-ru", RS_GEOIP_RU))
