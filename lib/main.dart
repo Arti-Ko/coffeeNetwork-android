@@ -224,6 +224,7 @@ class _HomeShellState extends State<HomeShell> {
   Timer? _poll;
   // live speed (bytes/sec) derived from clash_api traffic totals
   int upSpeed = 0, downSpeed = 0;
+  DateTime? since; // session start — for the timer in air/dawn/pult/mag styles
   int _upT = 0, _downT = 0;
   DateTime? _tT;
   // active protocol/node updated by Kotlin on reconnect (e.g. WiFi→cellular switch)
@@ -421,10 +422,12 @@ class _HomeShellState extends State<HomeShell> {
       final ah = j['activeHost'] as String?;
       final aport = j['activePort'] as int?;
       final liveNode = (ah != null && aport != null && aport > 0) ? '$ah:$aport' : null;
+      // `running` в условии — чтобы тикал таймер сессии, пока подключены
       if (mounted && (running != connected || busy || ds != downSpeed || us != upSpeed
-          || ap != _liveProtocol || liveNode != _liveNode)) {
+          || ap != _liveProtocol || liveNode != _liveNode || running)) {
         setState(() {
           connected = running;
+          since = running ? (since ?? DateTime.now()) : null;
           busy = false;
           downSpeed = ds;
           upSpeed = us;
@@ -439,6 +442,15 @@ class _HomeShellState extends State<HomeShell> {
     if (bps < 1024) return '$bps B/s';
     if (bps < 1024 * 1024) return '${(bps / 1024).round()} KB/s';
     return '${(bps / 1048576).toStringAsFixed(1)} MB/s';
+  }
+
+  /// «00 : 42 : 17» — длительность текущей сессии (или «—»).
+  String get sessionStr {
+    final s = since;
+    if (s == null) return '—';
+    final d = DateTime.now().difference(s);
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(d.inHours)} : ${two(d.inMinutes % 60)} : ${two(d.inSeconds % 60)}';
   }
 
   Future<void> toggle() async {
@@ -666,8 +678,563 @@ Widget _label(String t) => Text(t, style: TextStyle(fontFamily: _mono, fontSize:
 class _TicketPage extends StatelessWidget {
   final _HomeShellState state;
   const _TicketPage({required this.state});
+
   @override
   Widget build(BuildContext context) {
+    switch (Pal.style) {
+      case 'air': return _air(context);
+      case 'mag': return _mag(context);
+      case 'dawn': return _dawn(context);
+      case 'poster': return _poster(context);
+      case 'pult': return _pult(context);
+      default: return _classic(context);
+    }
+  }
+
+  // ---------- shared bits ----------
+  void _toServers() => state._pager.animateToPage(1,
+      duration: const Duration(milliseconds: 320), curve: Curves.easeOutCubic);
+
+  Widget _bean(double s) => Container(
+        width: s, height: s,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFFE8A33D), Color(0xFFC47C22)]),
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(s / 2), topRight: Radius.circular(s / 2),
+            bottomRight: Radius.circular(s / 2), bottomLeft: Radius.circular(s / 6),
+          ),
+        ),
+      );
+
+  Widget _brandRow() => Row(mainAxisSize: MainAxisSize.min, children: [
+        _bean(24),
+        const SizedBox(width: 9),
+        Text('coffee network', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: Pal.ink)),
+      ]);
+
+  Widget _gearBtn() => GestureDetector(
+        onTap: _toServers,
+        child: Container(
+          width: 38, height: 38, alignment: Alignment.center,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: Pal.card),
+          child: Icon(Icons.tune, size: 18, color: Pal.inkDim),
+        ),
+      );
+
+  Widget _statPill(IconData i, String v) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Pal.card, borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Pal.glassShadow, blurRadius: 14, offset: const Offset(0, 4))],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(i, size: 14, color: Pal.accent),
+          const SizedBox(width: 7),
+          Text(v, style: TextStyle(fontFamily: _mono, fontSize: 13, color: Pal.ink)),
+        ]),
+      );
+
+  // ---------- ВОЗДУХ: кольцо по центру, техника в карточках ----------
+  Widget _air(BuildContext context) {
+    final on = state.connected && !state.busy;
+    final a = state.active;
+    Widget card(Widget child) => Container(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          decoration: BoxDecoration(
+            color: Pal.card, borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: Pal.glassShadow, blurRadius: 18, offset: const Offset(0, 6))],
+          ),
+          child: child,
+        );
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [_brandRow(), _gearBtn()]),
+      ),
+      Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text(state.busy ? '···' : (on ? 'Защищено' : 'Отключено'),
+            style: TextStyle(fontSize: 15, fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+                color: on ? Pal.accent : Pal.inkFaint)),
+        const SizedBox(height: 22),
+        _ConnectButton(state: state),
+        if (on) ...[
+          const SizedBox(height: 16),
+          Text(state.sessionStr, style: TextStyle(fontFamily: _mono, fontSize: 13.5, color: Pal.inkFaint)),
+          const SizedBox(height: 14),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            _statPill(Icons.south, _HomeShellState.fmtSpeed(state.downSpeed)),
+            const SizedBox(width: 10),
+            _statPill(Icons.north, _HomeShellState.fmtSpeed(state.upSpeed)),
+          ]),
+        ],
+      ])),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
+        child: Column(children: [
+          GestureDetector(
+            onTap: _toServers,
+            child: card(Row(children: [
+              Container(
+                width: 40, height: 40, alignment: Alignment.center,
+                decoration: BoxDecoration(color: Pal.bg, borderRadius: BorderRadius.circular(13)),
+                child: Text((a?.protocol ?? '—').toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '').padRight(1).substring(0, 1),
+                    style: TextStyle(fontFamily: _mono, fontSize: 15, fontWeight: FontWeight.w700, color: Pal.accent)),
+              ),
+              const SizedBox(width: 13),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(on ? 'Подключено · ${(state._liveProtocol ?? a?.protocol ?? '—').toUpperCase()}' : 'Сервер',
+                    style: TextStyle(fontSize: 12, color: Pal.inkFaint)),
+                const SizedBox(height: 2),
+                Text(a?.name ?? 'не выбран', maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Pal.ink)),
+              ])),
+              Icon(Icons.chevron_right, size: 22, color: Pal.inkFaint),
+            ])),
+          ),
+          const SizedBox(height: 10),
+          card(Row(children: [
+            Expanded(child: Text('Режим трафика', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: Pal.ink))),
+            _miniSeg(),
+          ])),
+          const SizedBox(height: 10),
+          card(Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Сайты РФ — напрямую', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: Pal.ink)),
+              const SizedBox(height: 2),
+              Text('госуслуги и банки работают как обычно', style: TextStyle(fontSize: 12, color: Pal.inkFaint)),
+            ])),
+            Switch(
+              value: state.bypassRu,
+              activeColor: Pal.accentInk,
+              activeTrackColor: Pal.accent,
+              onChanged: (v) { state.setState(() => state.bypassRu = v); state._save(); },
+            ),
+          ])),
+        ]),
+      ),
+    ]);
+  }
+
+  Widget _miniSeg() {
+    Widget seg(String id, String t) {
+      final sel = state.mode == id;
+      return GestureDetector(
+        onTap: () { state.setState(() => state.mode = id); state._save(); },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
+          decoration: BoxDecoration(
+            color: sel ? Pal.bg : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(t, style: TextStyle(fontSize: 12.5,
+              fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+              color: sel ? Pal.ink : Pal.inkFaint)),
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: Pal.hair, borderRadius: BorderRadius.circular(13)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [seg('sys', 'Прокси'), seg('tun', 'Весь (TUN)')]),
+    );
+  }
+
+  // ---------- ЖУРНАЛ: слово-статус и текстовые действия ----------
+  Widget _mag(BuildContext context) {
+    final on = state.connected && !state.busy;
+    final a = state.active;
+    final word = state.busy ? 'секунду' : (on ? 'защищено' : 'отключено');
+    final top3 = state.servers.take(3).toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 16, 22, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Row(children: [
+            _bean(18),
+            const SizedBox(width: 8),
+            Text('COFFEE NETWORK', style: TextStyle(fontSize: 11, letterSpacing: 3.4, fontWeight: FontWeight.w600, color: Pal.inkDim)),
+          ]),
+          GestureDetector(onTap: _toServers, child: Text('серверы →', style: TextStyle(fontSize: 13, color: Pal.inkDim))),
+        ]),
+        const Spacer(),
+        Text.rich(TextSpan(children: [
+          TextSpan(text: word, style: TextStyle(fontSize: 56, height: 0.98, letterSpacing: -2.2,
+              fontWeight: FontWeight.w600, color: on ? Pal.accent : Pal.ink)),
+          TextSpan(text: '.', style: TextStyle(fontSize: 56, fontWeight: FontWeight.w600,
+              color: on ? Pal.ink : Pal.accent)),
+        ])),
+        const SizedBox(height: 12),
+        Text('${(a?.name ?? 'сервер не выбран').toLowerCase()} · ${(a?.protocol ?? '—').toLowerCase()}',
+            style: TextStyle(fontSize: 14, color: Pal.inkFaint)),
+        if (on)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              '↓ ${_HomeShellState.fmtSpeed(state.downSpeed)}   ↑ ${_HomeShellState.fmtSpeed(state.upSpeed)}   ${state.sessionStr}',
+              style: TextStyle(fontFamily: _mono, fontSize: 12.5, color: Pal.inkDim)),
+          ),
+        const SizedBox(height: 26),
+        _ConnectButton(state: state),
+        const Spacer(),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.only(bottom: 9),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.ink, width: 1.5))),
+          child: Text('СЕРВЕРЫ — ${state.servers.length.toString().padLeft(2, '0')}',
+              style: TextStyle(fontSize: 10.5, letterSpacing: 3, fontWeight: FontWeight.w600, color: Pal.inkFaint)),
+        ),
+        for (final s in top3)
+          GestureDetector(
+            onTap: () { state.setState(() => state.selectedId = s.id); state._save(); },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.hair))),
+              child: Row(children: [
+                SizedBox(width: 28, child: Text((top3.indexOf(s) + 1).toString().padLeft(2, '0'),
+                    style: TextStyle(fontFamily: _mono, fontSize: 11,
+                        color: state.selectedId == s.id ? Pal.accent : Pal.inkFaint,
+                        fontWeight: state.selectedId == s.id ? FontWeight.w700 : FontWeight.w400))),
+                Expanded(child: Text(s.name.toLowerCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 16.5,
+                        fontWeight: state.selectedId == s.id ? FontWeight.w600 : FontWeight.w400,
+                        color: state.selectedId == s.id ? Pal.ink : Pal.inkDim))),
+                if (state.selectedId == s.id)
+                  Padding(padding: const EdgeInsets.only(right: 8),
+                      child: Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: Pal.accent))),
+                Text(s.protocol.toUpperCase(), style: TextStyle(fontSize: 10, letterSpacing: 1.4, color: Pal.inkFaint)),
+              ]),
+            ),
+          ),
+        const SizedBox(height: 12),
+        Row(children: [
+          GestureDetector(onTap: _toServers, child: Container(
+            padding: const EdgeInsets.only(bottom: 2),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.accent, width: 1.5))),
+            child: Text('+ добавить', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Pal.accent)),
+          )),
+          const SizedBox(width: 20),
+          GestureDetector(onTap: _toServers, child: Container(
+            padding: const EdgeInsets.only(bottom: 2),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.hair, width: 1.5))),
+            child: Text('все серверы', style: TextStyle(fontSize: 13, color: Pal.inkDim)),
+          )),
+        ]),
+        const SizedBox(height: 8),
+      ]),
+    );
+  }
+
+  // ---------- РАССВЕТ: цвет фона = статус, пилюля и чипы ----------
+  Widget _dawn(BuildContext context) {
+    final on = state.connected && !state.busy;
+    final a = state.active;
+    Widget chip(String t, {bool lead = false, VoidCallback? onTap}) => GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 15),
+            decoration: BoxDecoration(color: Pal.card, borderRadius: BorderRadius.circular(999)),
+            child: Text(t, style: TextStyle(fontSize: 12.5,
+                fontWeight: lead ? FontWeight.w600 : FontWeight.w400, color: Pal.ink)),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          _brandRow(),
+          GestureDetector(onTap: _toServers, child: Container(
+            padding: const EdgeInsets.only(bottom: 1),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.inkFaint))),
+            child: Text('настройки', style: TextStyle(fontSize: 13, color: Pal.inkDim)),
+          )),
+        ]),
+        Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text(state.busy ? '···' : (on ? 'защищено' : 'не защищено'),
+              style: TextStyle(fontSize: 34, letterSpacing: -0.8,
+                  fontWeight: on ? FontWeight.w500 : FontWeight.w300,
+                  color: on ? const Color(0xFF8A5410) : Pal.ink)),
+          const SizedBox(height: 8),
+          Text(on
+                  ? '${a?.name ?? ''} · ${state.sessionStr}'
+                  : 'Трафик идёт напрямую${a != null ? ' · выбран ${a.name}' : ''}',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 13.5, color: Pal.inkDim)),
+          const SizedBox(height: 26),
+          _ConnectButton(state: state),
+          const SizedBox(height: 24),
+          Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 8, children: [
+            chip(state.mode == 'tun' ? 'Весь трафик' : 'Только прокси', lead: true, onTap: () {
+              state.setState(() => state.mode = state.mode == 'tun' ? 'sys' : 'tun');
+              state._save();
+            }),
+            chip('РФ напрямую ${state.bypassRu ? '✓' : '✕'}', onTap: () {
+              state.setState(() => state.bypassRu = !state.bypassRu);
+              state._save();
+            }),
+            if (on) chip('↓ ${_HomeShellState.fmtSpeed(state.downSpeed)}'),
+            if (on) chip('↑ ${_HomeShellState.fmtSpeed(state.upSpeed)}'),
+          ]),
+        ])),
+        GestureDetector(
+          onTap: _toServers,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
+            decoration: BoxDecoration(color: Pal.card, borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Pal.edge)),
+            child: Row(children: [
+              Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: Pal.accent)),
+              const SizedBox(width: 11),
+              Expanded(child: Text(a?.name ?? 'сервер не выбран', maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: Pal.ink))),
+              Text((a?.protocol ?? '').toUpperCase(),
+                  style: TextStyle(fontSize: 10, letterSpacing: 1.4, color: Pal.inkFaint)),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 10),
+        GestureDetector(onTap: _toServers,
+            child: Text('все серверы · игнор · лог', style: TextStyle(fontSize: 12.5, color: Pal.inkFaint))),
+      ]),
+    );
+  }
+
+  // ---------- ПЛАКАТ: рубленое слово, чекбоксы, маркер ----------
+  Widget _poster(BuildContext context) {
+    final on = state.connected && !state.busy;
+    final a = state.active;
+    final top2 = state.servers.take(2).toList();
+    Widget check(String t, bool v, VoidCallback onTap) => GestureDetector(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(children: [
+              Container(
+                width: 17, height: 17, alignment: Alignment.center,
+                decoration: BoxDecoration(color: Pal.card, border: Border.all(color: Pal.edge, width: 2.5)),
+                child: v ? Text('✕', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Pal.ink, height: 1)) : null,
+              ),
+              const SizedBox(width: 10),
+              Text(t, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: Pal.ink)),
+            ]),
+          ),
+        );
+    final markerBg = Pal.dark ? const Color(0x33FFD23F) : const Color(0xFFFFD23F);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 13),
+          decoration: BoxDecoration(
+            color: Pal.card, border: Border.all(color: Pal.edge, width: 2),
+            boxShadow: [BoxShadow(color: Pal.edge, offset: const Offset(4, 4))],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _bean(17),
+            const SizedBox(width: 8),
+            Text('COFFEE NETWORK', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: Pal.ink)),
+          ]),
+        ),
+        const Spacer(),
+        Text(state.busy ? '···' : (on ? 'вкл.' : 'выкл.'),
+            style: TextStyle(fontSize: 88, height: 0.9, letterSpacing: -4, fontWeight: FontWeight.w900,
+                color: on ? Pal.accent : Pal.ink)),
+        const SizedBox(height: 10),
+        Text('${(a?.name ?? 'НЕТ СЕРВЕРА').toUpperCase()}${on ? ' · ${state.sessionStr}' : ''}',
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: Pal.inkDim)),
+        const SizedBox(height: 20),
+        _ConnectButton(state: state),
+        const SizedBox(height: 20),
+        check('ВЕСЬ ТРАФИК (TUN)', state.mode == 'tun', () { state.setState(() => state.mode = 'tun'); state._save(); }),
+        check('ТОЛЬКО ПРОКСИ', state.mode == 'sys', () { state.setState(() => state.mode = 'sys'); state._save(); }),
+        check('САЙТЫ РФ — НАПРЯМУЮ', state.bypassRu, () { state.setState(() => state.bypassRu = !state.bypassRu); state._save(); }),
+        if (on)
+          Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
+                decoration: BoxDecoration(color: Pal.card, border: Border.all(color: Pal.edge, width: 2)),
+                child: Text('↓ ${_HomeShellState.fmtSpeed(state.downSpeed)}',
+                    style: TextStyle(fontFamily: _mono, fontSize: 12, fontWeight: FontWeight.w700, color: Pal.ink)),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
+                decoration: BoxDecoration(color: Pal.card, border: Border.all(color: Pal.edge, width: 2)),
+                child: Text('↑ ${_HomeShellState.fmtSpeed(state.upSpeed)}',
+                    style: TextStyle(fontFamily: _mono, fontSize: 12, fontWeight: FontWeight.w700, color: Pal.ink)),
+              ),
+            ]),
+          ),
+        const Spacer(),
+        for (final s in top2)
+          GestureDetector(
+            onTap: () { state.setState(() => state.selectedId = s.id); state._save(); },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 6),
+              decoration: BoxDecoration(
+                color: state.selectedId == s.id ? markerBg : Colors.transparent,
+                border: Border(
+                  top: top2.indexOf(s) == 0 ? BorderSide(color: Pal.edge, width: 2) : BorderSide.none,
+                  bottom: BorderSide(color: Pal.edge, width: 2),
+                ),
+              ),
+              child: Row(children: [
+                Text((top2.indexOf(s) + 1).toString().padLeft(2, '0'),
+                    style: TextStyle(fontFamily: _mono, fontSize: 11, fontWeight: FontWeight.w800, color: Pal.ink)),
+                const SizedBox(width: 12),
+                Expanded(child: Text(s.name.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Pal.ink))),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 7),
+                  decoration: BoxDecoration(border: Border.all(color: Pal.edge, width: 2)),
+                  child: Text(s.protocol.toUpperCase(),
+                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: Pal.ink)),
+                ),
+              ]),
+            ),
+          ),
+        const SizedBox(height: 14),
+        Row(children: [
+          GestureDetector(onTap: _toServers, child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 13),
+            decoration: BoxDecoration(
+              color: Pal.accent, border: Border.all(color: Pal.edge, width: 2),
+              boxShadow: [BoxShadow(color: Pal.edge, offset: const Offset(3, 3))],
+            ),
+            child: Text('+ ДОБАВИТЬ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Pal.accentInk)),
+          )),
+          const SizedBox(width: 12),
+          GestureDetector(onTap: _toServers, child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 13),
+            decoration: BoxDecoration(
+              color: Pal.card, border: Border.all(color: Pal.edge, width: 2),
+              boxShadow: [BoxShadow(color: Pal.edge, offset: const Offset(3, 3))],
+            ),
+            child: Text('ВСЕ СЕРВЕРЫ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Pal.ink)),
+          )),
+        ]),
+      ]),
+    );
+  }
+
+  // ---------- ПУЛЬТ: bento-плитки ----------
+  Widget _pult(BuildContext context) {
+    final on = state.connected && !state.busy;
+    final a = state.active;
+    Widget tile({required String cap, required Widget child, EdgeInsets? pad}) => Container(
+          width: double.infinity,
+          padding: pad ?? const EdgeInsets.fromLTRB(15, 13, 15, 13),
+          decoration: BoxDecoration(
+            color: Pal.card, borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Pal.edge),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(cap, style: TextStyle(fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w600, color: Pal.inkFaint)),
+            const SizedBox(height: 8),
+            child,
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 2, 4, 12),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [_brandRow(), _gearBtn()]),
+        ),
+        tile(
+          cap: 'СТАТУС',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 11, height: 11, decoration: BoxDecoration(shape: BoxShape.circle,
+                  color: on ? const Color(0xFF3DDC97) : Pal.inkFaint)),
+              const SizedBox(width: 9),
+              Text(state.busy ? '···' : (on ? 'Защищено' : 'Отключено'),
+                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: Pal.ink)),
+            ]),
+            const SizedBox(height: 4),
+            Text(a != null ? '${a.name} · ${(state._liveProtocol ?? a.protocol).toUpperCase()}' : 'сервер не выбран',
+                style: TextStyle(fontSize: 12.5, color: Pal.inkFaint)),
+            const SizedBox(height: 12),
+            _ConnectButton(state: state),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: tile(cap: 'СКОРОСТЬ', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(on ? '↓ ${_HomeShellState.fmtSpeed(state.downSpeed)}' : '—',
+                style: TextStyle(fontFamily: _mono, fontSize: 16, fontWeight: FontWeight.w700, color: Pal.ink)),
+            const SizedBox(height: 2),
+            Text(on ? '↑ ${_HomeShellState.fmtSpeed(state.upSpeed)}' : 'нет данных',
+                style: TextStyle(fontFamily: _mono, fontSize: 11.5, color: Pal.inkFaint)),
+          ]))),
+          const SizedBox(width: 10),
+          Expanded(child: tile(cap: 'СЕССИЯ', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(on ? state.sessionStr.replaceAll(' ', '') : '—',
+                style: TextStyle(fontFamily: _mono, fontSize: 16, fontWeight: FontWeight.w700, color: Pal.ink)),
+            const SizedBox(height: 2),
+            Text(on ? 'подключено' : 'не подключено', style: TextStyle(fontSize: 11.5, color: Pal.inkFaint)),
+          ]))),
+        ]),
+        const SizedBox(height: 10),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: tile(cap: 'РЕЖИМ', child: _miniSeg())),
+          const SizedBox(width: 10),
+          Expanded(child: tile(cap: 'САЙТЫ РФ', pad: const EdgeInsets.fromLTRB(15, 13, 8, 5),
+              child: Row(children: [
+                Expanded(child: Text('Напрямую', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Pal.ink))),
+                Switch(
+                  value: state.bypassRu,
+                  activeColor: Colors.white,
+                  activeTrackColor: Pal.accent,
+                  onChanged: (v) { state.setState(() => state.bypassRu = v); state._save(); },
+                ),
+              ]))),
+        ]),
+        const SizedBox(height: 10),
+        Expanded(child: tile(
+          cap: 'СЕРВЕРЫ · ${state.servers.length}',
+          child: Column(children: [
+            for (final s in state.servers.take(3))
+              GestureDetector(
+                onTap: () { state.setState(() => state.selectedId = s.id); state._save(); },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: state.selectedId == s.id ? Pal.bg : Colors.transparent,
+                    borderRadius: BorderRadius.circular(11),
+                    border: state.selectedId == s.id ? Border.all(color: Pal.accent, width: 1.5) : null,
+                  ),
+                  child: Row(children: [
+                    Expanded(child: Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Pal.ink))),
+                    Text(s.protocol.toUpperCase(),
+                        style: TextStyle(fontSize: 9.5, letterSpacing: 1, fontWeight: FontWeight.w700, color: Pal.inkFaint)),
+                  ]),
+                ),
+              ),
+            GestureDetector(
+              onTap: _toServers,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: Pal.hair, width: 1.5),
+                ),
+                child: Text('+ добавить / все серверы', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Pal.accent)),
+              ),
+            ),
+          ]),
+        )),
+      ]),
+    );
+  }
+
+  // ---------- КЛАССИКА: посадочный талон (без изменений) ----------
+  Widget _classic(BuildContext context) {
     final on = state.connected && !state.busy;
     final a = state.active;
     return _Glass(
@@ -995,9 +1562,14 @@ class _ServersPage extends StatelessWidget {
 
   Widget _srvTile(BuildContext context, Server s) {
     final sel = state.selectedId == s.id;
+    // «Плакат»: выбранный сервер «прокрашен маркером», как в макете
+    final markerBg = Pal.style == 'poster' && sel
+        ? (Pal.dark ? const Color(0x33FFD23F) : const Color(0xFFFFD23F))
+        : null;
     return InkWell(
       onTap: () { state.setState(() => state.selectedId = s.id); state._save(); },
-      child: Padding(
+      child: Container(
+        color: markerBg,
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
         child: Row(children: [
           Container(
