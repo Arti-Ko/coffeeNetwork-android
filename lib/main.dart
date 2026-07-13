@@ -30,11 +30,11 @@ class Pal {
 
   static Color get bg {
     switch (style) {
-      case 'air': return _p(const Color(0xFF16120D), const Color(0xFFF8F4EE));
-      case 'mag': return _p(const Color(0xFF191815), const Color(0xFFF4F3EF));
-      case 'dawn': return _p(const Color(0xFF15161A), const Color(0xFFF1F0ED));
-      case 'poster': return _p(const Color(0xFF17161A), const Color(0xFFF2F0EA));
-      case 'pult': return _p(const Color(0xFF14171C), const Color(0xFFEEF0F3));
+      case 'air': return _p(const Color(0xFF1A140C), const Color(0xFFF8F4EE));
+      case 'mag': return _p(const Color(0xFF211E18), const Color(0xFFF4F3EF));
+      case 'dawn': return _p(const Color(0xFF171A22), const Color(0xFFF1F0ED));
+      case 'poster': return _p(const Color(0xFF100F13), const Color(0xFFF2F0EA));
+      case 'pult': return _p(const Color(0xFF12161D), const Color(0xFFEEF0F3));
       default: return _p(const Color(0xFF121010), const Color(0xFFF4F1EC));
     }
   }
@@ -536,7 +536,7 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: Stack(
         children: [
-          _Backdrop(),
+          _Backdrop(on: connected && !busy),
           SafeArea(
             minimum: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: PageView(
@@ -555,8 +555,32 @@ class _HomeShellState extends State<HomeShell> {
 }
 
 class _Backdrop extends StatelessWidget {
+  /// Connected state — «Рассвет» красит весь фон по состоянию подключения.
+  final bool on;
+  const _Backdrop({this.on = false});
+
   @override
   Widget build(BuildContext context) {
+    if (Pal.style == 'dawn') {
+      final colors = Pal.dark
+          ? (on
+              ? [const Color(0xFF191410), const Color(0xFF2A1D0C), const Color(0xFF3D2A10)]
+              : [const Color(0xFF191A1E), const Color(0xFF131418), const Color(0xFF131418)])
+          : (on
+              ? [const Color(0xFFFDF4E2), const Color(0xFFF8DFB0), const Color(0xFFF3CB8A)]
+              : [const Color(0xFFF1F0ED), const Color(0xFFE6E7E7), const Color(0xFFE6E7E7)]);
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 600),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: colors,
+          ),
+        ),
+        child: const SizedBox.expand(),
+      );
+    }
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: RadialGradient(
@@ -577,15 +601,62 @@ class _Glass extends StatelessWidget {
   const _Glass({required this.child, required this.color});
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Pal.edge, width: 1),
-        boxShadow: [BoxShadow(color: Pal.glassShadow, blurRadius: 40, offset: const Offset(0, 24))],
-      ),
-      child: child,
-    );
+    switch (Pal.style) {
+      case 'mag':
+        // «Журнал»: без карточек — контент лежит прямо на бумаге
+        return SizedBox.expand(child: child);
+      case 'poster':
+        // «Плакат»: жёсткая рамка + офсетная тень без размытия
+        return Container(
+          decoration: BoxDecoration(
+            color: Pal.card,
+            border: Border.all(color: Pal.edge, width: 2.5),
+            boxShadow: [BoxShadow(color: Pal.edge, offset: const Offset(7, 7))],
+          ),
+          child: child,
+        );
+      case 'pult':
+        // «Пульт»: плитка с чётким рёбрышком, компактный радиус
+        return Container(
+          decoration: BoxDecoration(
+            color: Pal.card,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Pal.edge, width: 1),
+            boxShadow: [BoxShadow(color: Pal.glassShadow, blurRadius: 24, offset: const Offset(0, 8))],
+          ),
+          child: child,
+        );
+      case 'air':
+        // «Воздух»: сплошная молочная карточка, крупный радиус, мягкая тень
+        return Container(
+          decoration: BoxDecoration(
+            color: Pal.card,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [BoxShadow(color: Pal.glassShadow, blurRadius: 36, offset: const Offset(0, 14))],
+          ),
+          child: child,
+        );
+      case 'dawn':
+        // «Рассвет»: полупрозрачное стекло над градиентом состояния
+        return Container(
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: Pal.edge, width: 1),
+          ),
+          child: child,
+        );
+      default:
+        return Container(
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Pal.edge, width: 1),
+            boxShadow: [BoxShadow(color: Pal.glassShadow, blurRadius: 40, offset: const Offset(0, 24))],
+          ),
+          child: child,
+        );
+    }
   }
 }
 
@@ -684,22 +755,135 @@ class _ConnectButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final on = state.connected && !state.busy;
     final label = state.busy ? (state.connected ? 'DISCONNECTING' : 'CONNECTING') : (state.connected ? 'DISCONNECT' : 'CONNECT');
-    return GestureDetector(
-      onTap: state.toggle,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 260),
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 22),
-        decoration: BoxDecoration(color: on ? Pal.accent : Pal.card2, borderRadius: BorderRadius.circular(18), border: Border.all(color: on ? Pal.accent : Pal.edge)),
-        child: Row(children: [
-          Container(width: 11, height: 11, decoration: BoxDecoration(shape: BoxShape.circle, color: on ? Pal.accentInk : (state.busy ? Pal.accent : Pal.inkFaint))),
-          const SizedBox(width: 14),
-          Text(label, style: TextStyle(fontFamily: _mono, fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 2, color: on ? Pal.accentInk : Pal.ink)),
-          const Spacer(),
-          Icon(Icons.arrow_forward, size: 20, color: on ? Pal.accentInk : Pal.ink),
-        ]),
-      ),
-    );
+
+    switch (Pal.style) {
+      case 'air':
+        // круглая кнопка-кольцо по центру: белая ↔ «нагретая» акцентом
+        return Center(
+          child: GestureDetector(
+            onTap: state.toggle,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 148, height: 148,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: on ? Pal.accent : Pal.card,
+                border: Border.all(color: on ? Pal.accent : Pal.hair, width: 1.5),
+                boxShadow: [BoxShadow(
+                  color: on ? Pal.accent.withValues(alpha: 0.45) : Pal.glassShadow,
+                  blurRadius: 40, offset: const Offset(0, 16),
+                )],
+              ),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.power_settings_new, size: 42, color: on ? Pal.accentInk : Pal.inkFaint),
+                const SizedBox(height: 6),
+                Text(state.busy ? '···' : (on ? 'ОТКЛЮЧИТЬ' : 'ВКЛЮЧИТЬ'),
+                    style: TextStyle(fontFamily: _mono, fontSize: 10, letterSpacing: 1.4,
+                        color: on ? Pal.accentInk : Pal.inkFaint)),
+              ]),
+            ),
+          ),
+        );
+      case 'mag':
+        // текст с подчёркиванием — как ссылка в журнале
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: GestureDetector(
+            onTap: state.toggle,
+            child: Container(
+              padding: const EdgeInsets.only(bottom: 6),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.accent, width: 2.5))),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(
+                  state.busy ? 'секунду…' : (state.connected ? 'отключить' : 'подключить'),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Pal.ink),
+                ),
+                const SizedBox(width: 10),
+                Icon(Icons.arrow_forward, size: 22, color: Pal.ink),
+              ]),
+            ),
+          ),
+        );
+      case 'dawn':
+        // пилюля по центру: тёмная налитая ↔ призрачная
+        return Center(
+          child: GestureDetector(
+            onTap: state.toggle,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 44),
+              decoration: BoxDecoration(
+                color: on ? Colors.transparent : Pal.ink,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: on ? Pal.ink.withValues(alpha: 0.35) : Pal.ink, width: 1.5),
+              ),
+              child: Text(
+                state.busy ? '···' : (on ? 'Отключить' : 'Подключиться'),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: on ? Pal.ink : Pal.bg),
+              ),
+            ),
+          ),
+        );
+      case 'poster':
+        // брутальный блок: жёсткая рамка + офсетная тень
+        return GestureDetector(
+          onTap: state.toggle,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 22),
+            decoration: BoxDecoration(
+              color: on ? Pal.card : Pal.accent,
+              border: Border.all(color: Pal.edge, width: 3),
+              boxShadow: [BoxShadow(color: Pal.edge, offset: const Offset(5, 5))],
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(
+                state.busy ? '···' : (state.connected ? 'ВЫКЛЮЧИТЬ' : 'ВКЛЮЧИТЬ'),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, letterSpacing: 2,
+                    color: on ? Pal.ink : Pal.accentInk),
+              ),
+              const SizedBox(width: 10),
+              Icon(Icons.arrow_forward, size: 22, color: on ? Pal.ink : Pal.accentInk),
+            ]),
+          ),
+        );
+      case 'pult':
+        // плоская плитка-кнопка, как в дэшборде
+        return GestureDetector(
+          onTap: state.toggle,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            decoration: BoxDecoration(
+              color: on ? Pal.card : Pal.accent,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: on ? Pal.edge : Pal.accent),
+            ),
+            child: Center(child: Text(
+              state.busy ? '···' : (state.connected ? 'Отключить' : 'Подключиться'),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: on ? Pal.ink : Pal.accentInk),
+            )),
+          ),
+        );
+      default:
+        return GestureDetector(
+          onTap: state.toggle,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 22),
+            decoration: BoxDecoration(color: on ? Pal.accent : Pal.card2, borderRadius: BorderRadius.circular(18), border: Border.all(color: on ? Pal.accent : Pal.edge)),
+            child: Row(children: [
+              Container(width: 11, height: 11, decoration: BoxDecoration(shape: BoxShape.circle, color: on ? Pal.accentInk : (state.busy ? Pal.accent : Pal.inkFaint))),
+              const SizedBox(width: 14),
+              Text(label, style: TextStyle(fontFamily: _mono, fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 2, color: on ? Pal.accentInk : Pal.ink)),
+              const Spacer(),
+              Icon(Icons.arrow_forward, size: 20, color: on ? Pal.accentInk : Pal.ink),
+            ]),
+          ),
+        );
+    }
   }
 }
 
