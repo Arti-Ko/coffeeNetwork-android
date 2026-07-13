@@ -17,9 +17,14 @@ SharedPreferences? _prefs;
 /// Changing it and rebuilding the root (rootKey) re-themes the whole UI.
 /// Styles mirror the desktop client: classic | air | mag | dawn | poster | pult.
 class Pal {
-  static bool dark = true;
-  static String style = 'classic';
-  static Color accent = const Color(0xFFE8A33D);
+  // Редизайн: единственная тема — «Журнал» (бумага, графит, карамель).
+  // Переключение стилей и светлой/тёмной удалено; style/dark оставлены
+  // полями, т.к. по ним ветвятся виджеты, но значения фиксированы.
+  static bool dark = false;
+  static String style = 'mag';
+  static Color accent = const Color(0xFFC9862B);
+  /// Фон шторок и модалок — тёплая бумага чуть светлее основной.
+  static const Color paper = Color(0xFFFBFAF6);
   // Text/icon color drawn ON the accent — flips with accent luminance so any
   // custom color stays readable (dark ink on light accent, light ink on dark).
   static Color get accentInk =>
@@ -128,18 +133,10 @@ class Pal {
   }
 }
 
-const accentPresets = <Color>[
-  Color(0xFFE8A33D), Color(0xFFB5742B), Color(0xFF55C26B), Color(0xFF3FB6B0),
-  Color(0xFF4F8DF0), Color(0xFF9B7BE8), Color(0xFFE05A9C), Color(0xFFE0573C),
-];
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   _prefs = await SharedPreferences.getInstance();
-  Pal.dark = _prefs!.getBool('dark') ?? true;
-  Pal.style = _prefs!.getString('style') ?? 'classic';
-  Pal.accent = Color(_prefs!.getInt('accent') ?? 0xFFE8A33D);
   _applyOverlay();
   runApp(CoffeeApp(key: rootKey));
 }
@@ -706,6 +703,23 @@ class _TicketPage extends StatelessWidget {
         ),
       );
 
+  /// Текстовый переключатель режима — активный подчёркнут карамелью.
+  Widget _modeLink(String t, String id) {
+    final sel = state.mode == id;
+    return GestureDetector(
+      onTap: () { state.setState(() => state.mode = id); state._save(); },
+      child: Container(
+        padding: const EdgeInsets.only(bottom: 2),
+        decoration: sel
+            ? BoxDecoration(border: Border(bottom: BorderSide(color: Pal.accent, width: 2)))
+            : null,
+        child: Text(t, style: TextStyle(fontSize: 13.5,
+            fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+            color: sel ? Pal.ink : Pal.inkDim)),
+      ),
+    );
+  }
+
   Widget _brandRow() => Row(mainAxisSize: MainAxisSize.min, children: [
         _bean(24),
         const SizedBox(width: 9),
@@ -875,6 +889,16 @@ class _TicketPage extends StatelessWidget {
           ),
         const SizedBox(height: 26),
         _ConnectButton(state: state),
+        const SizedBox(height: 24),
+        Wrap(spacing: 18, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          _modeLink('весь трафик', 'tun'),
+          _modeLink('только прокси', 'sys'),
+          GestureDetector(
+            onTap: () { state.setState(() => state.bypassRu = !state.bypassRu); state._save(); },
+            child: Text('сайты РФ — напрямую ${state.bypassRu ? '✓' : '✕'}',
+                style: TextStyle(fontSize: 13.5, color: Pal.inkDim)),
+          ),
+        ]),
         const Spacer(),
         Container(
           width: double.infinity,
@@ -1518,20 +1542,29 @@ class _ServersPage extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text.rich(TextSpan(children: [
-              TextSpan(text: 'SERVERS ', style: TextStyle(fontFamily: _mono, fontSize: 13, letterSpacing: 2.4, color: Pal.inkDim)),
-              TextSpan(text: state.servers.length.toString().padLeft(2, '0'), style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.accent)),
-            ])),
-            _ghost('+ ДОБАВИТЬ', () => _addSheet(context)),
-          ]),
+          Container(
+            padding: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.ink, width: 1.5))),
+            child: Row(children: [
+              Expanded(child: Text('СЕРВЕРЫ — ${state.servers.length.toString().padLeft(2, '0')}',
+                  style: TextStyle(fontSize: 11, letterSpacing: 3, fontWeight: FontWeight.w600, color: Pal.inkFaint))),
+              GestureDetector(
+                onTap: () => _addSheet(context),
+                child: Container(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.accent, width: 1.5))),
+                  child: Text('+ добавить', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Pal.accent)),
+                ),
+              ),
+            ]),
+          ),
           const SizedBox(height: 16),
           Expanded(
             child: state.servers.isEmpty
                 ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text('NO NODES YET', style: TextStyle(fontFamily: _mono, fontSize: 12, letterSpacing: 2, color: Pal.inkDim)),
+                    Text('пока пусто.', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600, letterSpacing: -0.8, color: Pal.ink)),
                     const SizedBox(height: 8),
-                    Text('нажми «+ ДОБАВИТЬ» и вставь ссылку', style: TextStyle(fontSize: 12, color: Pal.inkFaint)),
+                    Text('нажми «+ добавить» и вставь ссылку', style: TextStyle(fontSize: 13, color: Pal.inkFaint)),
                   ]))
                 : ListView.separated(
                     itemCount: state.servers.length,
@@ -1562,28 +1595,30 @@ class _ServersPage extends StatelessWidget {
 
   Widget _srvTile(BuildContext context, Server s) {
     final sel = state.selectedId == s.id;
-    // «Плакат»: выбранный сервер «прокрашен маркером», как в макете
-    final markerBg = Pal.style == 'poster' && sel
-        ? (Pal.dark ? const Color(0x33FFD23F) : const Color(0xFFFFD23F))
-        : null;
     return InkWell(
       onTap: () { state.setState(() => state.selectedId = s.id); state._save(); },
-      child: Container(
-        color: markerBg,
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 2),
         child: Row(children: [
           Container(
-            constraints: const BoxConstraints(minWidth: 66),
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-            decoration: BoxDecoration(border: Border.all(color: sel ? Pal.accent : Pal.hair), borderRadius: BorderRadius.circular(6)),
-            child: Text(s.protocol.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(fontFamily: _mono, fontSize: 10, color: sel ? Pal.accent : Pal.inkFaint)),
+            width: 8, height: 8,
+            margin: const EdgeInsets.only(right: 13),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: sel ? Pal.accent : Colors.transparent,
+              border: sel ? null : Border.all(color: Pal.hair, width: 1.5),
+            ),
           ),
-          const SizedBox(width: 13),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: sel ? Pal.accent : Pal.ink)),
+            Text(s.name.toLowerCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 17, letterSpacing: -0.2,
+                    fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+                    color: sel ? Pal.ink : Pal.inkDim)),
             const SizedBox(height: 3),
             Text('${s.address}:${s.port}', style: TextStyle(fontFamily: _mono, fontSize: 11, color: Pal.inkFaint)),
           ])),
+          Text(s.protocol.toUpperCase(),
+              style: TextStyle(fontSize: 10, letterSpacing: 1.4, color: Pal.inkFaint)),
           IconButton(
             icon: Icon(Icons.signal_cellular_alt, size: 18,
               color: (s.mobileRaw ?? '').isNotEmpty ? Pal.accent : Pal.inkFaint),
@@ -1801,204 +1836,54 @@ class _ServersPage extends StatelessWidget {
       );
 
   void _settingsSheet(BuildContext context) {
-    var hsv = HSVColor.fromColor(Pal.accent);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Pal.dark ? const Color(0xFF1A1714) : const Color(0xFFFFFFFF),
+      backgroundColor: Pal.paper,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
-        void apply(VoidCallback f) {
-          setSheet(f);
-          _prefs!.setBool('dark', Pal.dark);
-          _prefs!.setString('style', Pal.style);
-          _prefs!.setInt('accent', Pal.accent.value);
-          rootKey.currentState?.refresh(); // MaterialApp theme + status bar
-          state.setState(() {}); // rebuild the home pages (they read Pal directly)
-        }
-
-        void setAccent(HSVColor v) => apply(() { hsv = v; Pal.accent = v.toColor(); });
-
-        return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, 28 + MediaQuery.of(ctx).viewInsets.bottom),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _label('НАСТРОЙКИ'),
-            const SizedBox(height: 16),
-            _label('СТИЛЬ'),
-            const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              _styleChip('classic', 'КЛАССИКА', apply),
-              _styleChip('air', 'ВОЗДУХ', apply),
-              _styleChip('mag', 'ЖУРНАЛ', apply),
-              _styleChip('dawn', 'РАССВЕТ', apply),
-              _styleChip('poster', 'ПЛАКАТ', apply),
-              _styleChip('pult', 'ПУЛЬТ', apply),
-            ]),
-            const SizedBox(height: 20),
-            _label('ТЕМА'),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(color: Pal.hair, borderRadius: BorderRadius.circular(14)),
-              child: Row(children: [
-                _themeSeg('ТЁМНАЯ', true, () => apply(() => Pal.dark = true)),
-                _themeSeg('СВЕТЛАЯ', false, () => apply(() => Pal.dark = false)),
-              ]),
-            ),
-            const SizedBox(height: 20),
-            Row(children: [
-              _label('АКЦЕНТ'),
-              const Spacer(),
-              Container(
-                width: 30, height: 30,
-                decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(8), border: Border.all(color: Pal.edge)),
-              ),
-            ]),
-            const SizedBox(height: 12),
-            Wrap(spacing: 12, runSpacing: 12, children: [
-              for (final c in accentPresets)
-                GestureDetector(
-                  onTap: () => setAccent(HSVColor.fromColor(c)),
-                  child: Container(
-                    width: 34, height: 34,
-                    decoration: BoxDecoration(
-                      color: c, shape: BoxShape.circle,
-                      border: Border.all(color: Pal.accent.value == c.value ? Pal.ink : Colors.transparent, width: 3),
-                    ),
-                  ),
-                ),
-            ]),
-            const SizedBox(height: 18),
-            _label('СВОЙ ЦВЕТ'),
-            const SizedBox(height: 10),
-            _ColorBar(
-              thumb: hsv.hue / 360,
-              gradient: [for (var h = 0; h <= 360; h += 30) HSVColor.fromAHSV(1, h.toDouble(), 1, 1).toColor()],
-              onChanged: (f) => setAccent(hsv.withHue((f * 360).clamp(0, 359.9))),
-            ),
-            const SizedBox(height: 10),
-            _ColorBar(
-              thumb: hsv.saturation,
-              gradient: [HSVColor.fromAHSV(1, hsv.hue, 0, hsv.value).toColor(), HSVColor.fromAHSV(1, hsv.hue, 1, hsv.value).toColor()],
-              onChanged: (f) => setAccent(hsv.withSaturation(f.clamp(0, 1))),
-            ),
-            const SizedBox(height: 10),
-            _ColorBar(
-              thumb: hsv.value,
-              gradient: [HSVColor.fromAHSV(1, hsv.hue, hsv.saturation, 0).toColor(), HSVColor.fromAHSV(1, hsv.hue, hsv.saturation, 1).toColor()],
-              onChanged: (f) => setAccent(hsv.withValue(f.clamp(0, 1))),
-            ),
-            const SizedBox(height: 22),
-            _ghost('ПРОВЕРИТЬ ОБНОВЛЕНИЯ', () {
-              Navigator.pop(ctx);
-              state.checkUpdate(manual: true);
-            }),
-            const SizedBox(height: 10),
-            _ghost('ПОКАЗАТЬ ОБУЧЕНИЕ', () {
-              Navigator.pop(ctx);
-              state.setState(() => state.onboard = true);
-            }),
-            const SizedBox(height: 14),
-            Text('coffeeNetwork v${state.appVer}', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim)),
-          ]),
-        );
-      }),
-    );
-  }
-
-  /// Style picker chip for the settings sheet; [apply] persists and re-themes.
-  Widget _styleChip(String id, String t, void Function(VoidCallback) apply) {
-    final sel = Pal.style == id;
-    return GestureDetector(
-      onTap: () => apply(() => Pal.style = id),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
-        decoration: BoxDecoration(
-          color: sel ? Pal.accent : Colors.transparent,
-          border: Border.all(color: sel ? Pal.accent : Pal.hair),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(t, style: TextStyle(
-          fontFamily: _mono, fontSize: 11, letterSpacing: 1.1,
-          color: sel ? Pal.accentInk : Pal.inkDim,
-        )),
+      builder: (ctx) => SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 28 + MediaQuery.of(ctx).viewInsets.bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _label('НАСТРОЙКИ'),
+          const SizedBox(height: 18),
+          _ghost('ПРОВЕРИТЬ ОБНОВЛЕНИЯ', () {
+            Navigator.pop(ctx);
+            state.checkUpdate(manual: true);
+          }),
+          const SizedBox(height: 10),
+          _ghost('ПОКАЗАТЬ ОБУЧЕНИЕ', () {
+            Navigator.pop(ctx);
+            state.setState(() => state.onboard = true);
+          }),
+          const SizedBox(height: 16),
+          Text('coffeeNetwork v${state.appVer}', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim)),
+        ]),
       ),
     );
   }
 
-  Widget _themeSeg(String t, bool wantDark, VoidCallback onTap) {
-    final sel = Pal.dark == wantDark;
-    return Expanded(child: GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: sel ? Pal.accent : Colors.transparent, borderRadius: BorderRadius.circular(11)),
-        child: Text(t, style: TextStyle(fontFamily: _mono, fontSize: 12, letterSpacing: 1.2, color: sel ? Pal.accentInk : Pal.inkFaint)),
-      ),
-    ));
-  }
-
+  /// Журнал: «кнопка-ссылка» — текст с тонкой линейкой снизу.
   Widget _ghost(String t, VoidCallback onTap) => GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 14),
+          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 4),
           alignment: Alignment.center,
-          decoration: BoxDecoration(border: Border.all(color: Pal.hair), borderRadius: BorderRadius.circular(12)),
-          child: Text(t, style: TextStyle(fontFamily: _mono, fontSize: 12, letterSpacing: 1.2, color: Pal.inkDim)),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.hair, width: 1.5))),
+          child: Text(t.toLowerCase(), style: TextStyle(fontSize: 13.5, letterSpacing: 0.3, color: Pal.inkDim)),
         ),
       );
 
+  /// Журнал: главное действие — плоская карамельная плашка.
   Widget _solid(String t, VoidCallback onTap) => GestureDetector(
         onTap: onTap,
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 24),
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(12)),
-          child: Text(t, style: TextStyle(fontFamily: _mono, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: Pal.accentInk)),
+          decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(4)),
+          child: Text(t.toLowerCase(), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, letterSpacing: 0.3, color: Pal.accentInk)),
         ),
       );
-}
-
-/// A gradient bar you tap/drag to pick a 0..1 value (hue, saturation, brightness).
-class _ColorBar extends StatelessWidget {
-  final double thumb; // 0..1 position
-  final List<Color> gradient;
-  final ValueChanged<double> onChanged;
-  const _ColorBar({required this.thumb, required this.gradient, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (ctx, c) {
-      void emit(double dx) => onChanged((dx / c.maxWidth).clamp(0.0, 1.0));
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (d) => emit(d.localPosition.dx),
-        onHorizontalDragUpdate: (d) => emit(d.localPosition.dx),
-        child: Container(
-          height: 30,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: gradient),
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: Pal.edge),
-          ),
-          child: Align(
-            alignment: Alignment(thumb.clamp(0.0, 1.0) * 2 - 1, 0),
-            child: Container(
-              width: 8, height: 30,
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.white, width: 2.5),
-                boxShadow: const [BoxShadow(color: Color(0x88000000), blurRadius: 3)],
-              ),
-            ),
-          ),
-        ),
-      );
-    });
-  }
 }
 
 // ===================== exclusions (ИГНОР) =====================
