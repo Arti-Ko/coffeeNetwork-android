@@ -13,25 +13,119 @@ const _updateProgress = EventChannel('coffeenetwork/update_progress'); // APK do
 final rootKey = GlobalKey<_CoffeeAppState>();
 SharedPreferences? _prefs;
 
-/// Runtime palette: dark/light + custom accent. Changing it and rebuilding the
-/// root (rootKey) re-themes the whole UI.
+/// Runtime palette: style (visual skin) × dark/light + custom accent.
+/// Changing it and rebuilding the root (rootKey) re-themes the whole UI.
+/// Styles mirror the desktop client: classic | air | mag | dawn | poster | pult.
 class Pal {
   static bool dark = true;
+  static String style = 'classic';
   static Color accent = const Color(0xFFE8A33D);
   // Text/icon color drawn ON the accent — flips with accent luminance so any
   // custom color stays readable (dark ink on light accent, light ink on dark).
   static Color get accentInk =>
       accent.computeLuminance() > 0.45 ? const Color(0xFF1A1206) : const Color(0xFFFBF3E6);
 
-  static Color get bg => dark ? const Color(0xFF121010) : const Color(0xFFF4F1EC);
-  static Color get card => dark ? const Color(0x16FFFFFF) : const Color(0x0D000000);
-  static Color get card2 => dark ? const Color(0x10FFFFFF) : const Color(0x08000000);
-  static Color get edge => dark ? const Color(0x24FFFFFF) : const Color(0x1F000000);
-  static Color get ink => dark ? const Color(0xFFF3F0EA) : const Color(0xFF201C18);
-  static Color get inkDim => dark ? const Color(0xFFB6AFA4) : const Color(0xFF55504A);
-  static Color get inkFaint => dark ? const Color(0xFF837C72) : const Color(0xFF8A857C);
-  static Color get hair => dark ? const Color(0x18FFFFFF) : const Color(0x14000000);
-  static Color get glassShadow => dark ? const Color(0x66000000) : const Color(0x22000000);
+  /// Pick the (dark, light) pair for the current brightness.
+  static Color _p(Color d, Color l) => dark ? d : l;
+
+  static Color get bg {
+    switch (style) {
+      case 'air': return _p(const Color(0xFF16120D), const Color(0xFFF8F4EE));
+      case 'mag': return _p(const Color(0xFF191815), const Color(0xFFF4F3EF));
+      case 'dawn': return _p(const Color(0xFF15161A), const Color(0xFFF1F0ED));
+      case 'poster': return _p(const Color(0xFF17161A), const Color(0xFFF2F0EA));
+      case 'pult': return _p(const Color(0xFF14171C), const Color(0xFFEEF0F3));
+      default: return _p(const Color(0xFF121010), const Color(0xFFF4F1EC));
+    }
+  }
+
+  static Color get card {
+    switch (style) {
+      case 'air': return _p(const Color(0xFF221C14), const Color(0xFFFFFFFF));
+      case 'mag': return _p(const Color(0x00000000), const Color(0x00000000));
+      case 'dawn': return _p(const Color(0x14FFFFFF), const Color(0x8CFFFFFF));
+      case 'poster': return _p(const Color(0xFF201F24), const Color(0xFFFFFFFF));
+      case 'pult': return _p(const Color(0xFF1D222A), const Color(0xFFFFFFFF));
+      default: return _p(const Color(0x16FFFFFF), const Color(0x0D000000));
+    }
+  }
+
+  static Color get card2 {
+    switch (style) {
+      case 'air': return _p(const Color(0xFF1D1810), const Color(0xFFFDFAF5));
+      case 'mag': return _p(const Color(0x00000000), const Color(0x00000000));
+      case 'dawn': return _p(const Color(0x0FFFFFFF), const Color(0x66FFFFFF));
+      case 'poster': return _p(const Color(0xFF1C1B20), const Color(0xFFFAF8F3));
+      case 'pult': return _p(const Color(0xFF1A1F26), const Color(0xFFFBFCFD));
+      default: return _p(const Color(0x10FFFFFF), const Color(0x08000000));
+    }
+  }
+
+  static Color get edge {
+    switch (style) {
+      case 'air': return _p(const Color(0x12FFFFFF), const Color(0x14785F37));
+      case 'mag': return _p(const Color(0x00000000), const Color(0x00000000));
+      case 'dawn': return _p(const Color(0x17FFFFFF), const Color(0x1A46321F));
+      case 'poster': return _p(const Color(0xFFF2F0EA), const Color(0xFF141310));
+      case 'pult': return _p(const Color(0xFF262C35), const Color(0xFFE2E5EA));
+      default: return _p(const Color(0x24FFFFFF), const Color(0x1F000000));
+    }
+  }
+
+  static Color get ink {
+    switch (style) {
+      case 'air': return _p(const Color(0xFFEFE8DD), const Color(0xFF2C251D));
+      case 'mag': return _p(const Color(0xFFECE9E2), const Color(0xFF1C1A17));
+      case 'dawn': return _p(const Color(0xFFECEAE4), const Color(0xFF29241D));
+      case 'poster': return _p(const Color(0xFFF2F0EA), const Color(0xFF141310));
+      case 'pult': return _p(const Color(0xFFE8EAEE), const Color(0xFF161A20));
+      default: return _p(const Color(0xFFF3F0EA), const Color(0xFF201C18));
+    }
+  }
+
+  static Color get inkDim {
+    switch (style) {
+      case 'air': return _p(const Color(0xFFA99E8D), const Color(0xFF7A7060));
+      case 'mag': return _p(const Color(0xFF97938A), const Color(0xFF55524B));
+      case 'dawn': return _p(const Color(0xFF9B968C), const Color(0xFF6F6A60));
+      case 'poster': return _p(const Color(0xFFB9B6AD), const Color(0xFF3F3D38));
+      case 'pult': return _p(const Color(0xFF9AA1AC), const Color(0xFF5C6470));
+      default: return _p(const Color(0xFFB6AFA4), const Color(0xFF55504A));
+    }
+  }
+
+  static Color get inkFaint {
+    switch (style) {
+      case 'air': return _p(const Color(0xFF7C7263), const Color(0xFF9A9184));
+      case 'mag': return _p(const Color(0xFF6E6A61), const Color(0xFF8B877E));
+      case 'dawn': return _p(const Color(0xFF6E6A61), const Color(0xFF9B968C));
+      case 'poster': return _p(const Color(0xFF8A877E), const Color(0xFF6E6B63));
+      case 'pult': return _p(const Color(0xFF6B7280), const Color(0xFF8A919C));
+      default: return _p(const Color(0xFF837C72), const Color(0xFF8A857C));
+    }
+  }
+
+  static Color get hair {
+    switch (style) {
+      case 'air': return _p(const Color(0x14FFFFFF), const Color(0x173C2D19));
+      case 'mag': return _p(const Color(0x29ECE9E2), const Color(0xFFDEDBD2));
+      case 'dawn': return _p(const Color(0x1AFFFFFF), const Color(0x1A46321F));
+      case 'poster': return _p(const Color(0x59F2F0EA), const Color(0x8C141310));
+      case 'pult': return _p(const Color(0x14FFFFFF), const Color(0x14141923));
+      default: return _p(const Color(0x18FFFFFF), const Color(0x14000000));
+    }
+  }
+
+  static Color get glassShadow {
+    switch (style) {
+      case 'air': return _p(const Color(0x59000000), const Color(0x1A543C1A));
+      case 'mag': return _p(const Color(0x00000000), const Color(0x00000000));
+      case 'dawn': return _p(const Color(0x40000000), const Color(0x1A3C2D14));
+      case 'poster': return _p(const Color(0x00000000), const Color(0x00000000));
+      case 'pult': return _p(const Color(0x4D000000), const Color(0x121A2030));
+      default: return _p(const Color(0x66000000), const Color(0x22000000));
+    }
+  }
 }
 
 const accentPresets = <Color>[
@@ -44,6 +138,7 @@ void main() async {
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   _prefs = await SharedPreferences.getInstance();
   Pal.dark = _prefs!.getBool('dark') ?? true;
+  Pal.style = _prefs!.getString('style') ?? 'classic';
   Pal.accent = Color(_prefs!.getInt('accent') ?? 0xFFE8A33D);
   _applyOverlay();
   runApp(CoffeeApp(key: rootKey));
@@ -960,6 +1055,7 @@ class _ServersPage extends StatelessWidget {
         void apply(VoidCallback f) {
           setSheet(f);
           _prefs!.setBool('dark', Pal.dark);
+          _prefs!.setString('style', Pal.style);
           _prefs!.setInt('accent', Pal.accent.value);
           rootKey.currentState?.refresh(); // MaterialApp theme + status bar
           state.setState(() {}); // rebuild the home pages (they read Pal directly)
@@ -972,6 +1068,17 @@ class _ServersPage extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             _label('НАСТРОЙКИ'),
             const SizedBox(height: 16),
+            _label('СТИЛЬ'),
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              _styleChip('classic', 'КЛАССИКА', apply),
+              _styleChip('air', 'ВОЗДУХ', apply),
+              _styleChip('mag', 'ЖУРНАЛ', apply),
+              _styleChip('dawn', 'РАССВЕТ', apply),
+              _styleChip('poster', 'ПЛАКАТ', apply),
+              _styleChip('pult', 'ПУЛЬТ', apply),
+            ]),
+            const SizedBox(height: 20),
             _label('ТЕМА'),
             const SizedBox(height: 10),
             Container(
@@ -1040,6 +1147,26 @@ class _ServersPage extends StatelessWidget {
           ]),
         );
       }),
+    );
+  }
+
+  /// Style picker chip for the settings sheet; [apply] persists and re-themes.
+  Widget _styleChip(String id, String t, void Function(VoidCallback) apply) {
+    final sel = Pal.style == id;
+    return GestureDetector(
+      onTap: () => apply(() => Pal.style = id),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
+        decoration: BoxDecoration(
+          color: sel ? Pal.accent : Colors.transparent,
+          border: Border.all(color: sel ? Pal.accent : Pal.hair),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(t, style: TextStyle(
+          fontFamily: _mono, fontSize: 11, letterSpacing: 1.1,
+          color: sel ? Pal.accentInk : Pal.inkDim,
+        )),
+      ),
     );
   }
 
