@@ -12,6 +12,8 @@ const _ghRepo = 'Arti-Ko/coffeeNetwork-android'; // GitHub repo for update check
 const _updateProgress = EventChannel('coffeenetwork/update_progress'); // APK download %
 final rootKey = GlobalKey<_CoffeeAppState>();
 SharedPreferences? _prefs;
+/// Полная перестройка приложения (смена темы) — ставится в _CoffeeAppState.
+void Function()? appRefresh;
 
 /// Runtime palette: style (visual skin) × dark/light + custom accent.
 /// Changing it and rebuilding the root (rootKey) re-themes the whole UI.
@@ -23,8 +25,8 @@ class Pal {
   static bool dark = false;
   static String style = 'mag';
   static Color accent = const Color(0xFFC9862B);
-  /// Фон шторок и модалок — тёплая бумага чуть светлее основной.
-  static const Color paper = Color(0xFFFBFAF6);
+  /// Фон шторок и модалок — тёплая бумага (светлая) / графит (тёмная).
+  static Color get paper => dark ? const Color(0xFF1E1E1E) : const Color(0xFFFBFAF6);
   // Text/icon color drawn ON the accent — flips with accent luminance so any
   // custom color stays readable (dark ink on light accent, light ink on dark).
   static Color get accentInk =>
@@ -36,7 +38,7 @@ class Pal {
   static Color get bg {
     switch (style) {
       case 'air': return _p(const Color(0xFF1A140C), const Color(0xFFF8F4EE));
-      case 'mag': return _p(const Color(0xFF211E18), const Color(0xFFF4F3EF));
+      case 'mag': return _p(const Color(0xFF161616), const Color(0xFFF4F3EF));
       case 'dawn': return _p(const Color(0xFF171A22), const Color(0xFFF1F0ED));
       case 'poster': return _p(const Color(0xFF100F13), const Color(0xFFF2F0EA));
       case 'pult': return _p(const Color(0xFF12161D), const Color(0xFFEEF0F3));
@@ -154,14 +156,35 @@ class CoffeeApp extends StatefulWidget {
   State<CoffeeApp> createState() => _CoffeeAppState();
 }
 
-class _CoffeeAppState extends State<CoffeeApp> {
+class _CoffeeAppState extends State<CoffeeApp> with WidgetsBindingObserver {
   void refresh() {
     _applyOverlay();
     setState(() {});
   }
 
   @override
+  void initState() {
+    super.initState();
+    appRefresh = refresh;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (appRefresh == refresh) appRefresh = null;
+    super.dispose();
+  }
+
+  @override
+  void didChangePlatformBrightness() => refresh(); // «системная» тема следует за ОС
+
+  @override
   Widget build(BuildContext context) {
+    final pick = _prefs?.getString('theme') ?? 'light';
+    Pal.dark = pick == 'dark' ||
+        (pick == 'system' &&
+            WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark);
     return MaterialApp(
       title: 'coffeeNetwork',
       debugShowCheckedModeBanner: false,
@@ -170,6 +193,9 @@ class _CoffeeAppState extends State<CoffeeApp> {
         scaffoldBackgroundColor: Pal.bg,
         colorScheme: ColorScheme.fromSeed(seedColor: Pal.accent, brightness: Pal.dark ? Brightness.dark : Brightness.light),
       ),
+      // дизайн с фиксированными размерами: системный масштаб текста игнорируем,
+      // иначе слово-статус и кнопки «плавают» от устройства к устройству
+      builder: (context, child) => MediaQuery.withNoTextScaling(child: child!),
       home: const HomeShell(),
     );
   }
@@ -1884,6 +1910,34 @@ class _ServersPage extends StatelessWidget {
             Navigator.pop(ctx);
             state.setState(() => state.onboard = true);
           }),
+          const SizedBox(height: 20),
+          _label('ТЕМА'),
+          const SizedBox(height: 12),
+          Row(children: [
+            for (final e in const [['светлая', 'light'], ['тёмная', 'dark'], ['системная', 'system']])
+              Padding(
+                padding: const EdgeInsets.only(right: 22),
+                child: GestureDetector(
+                  onTap: () {
+                    _prefs!.setString('theme', e[1]);
+                    Navigator.pop(ctx);
+                    appRefresh?.call();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    decoration: BoxDecoration(border: Border(bottom: BorderSide(
+                        width: 2,
+                        color: (_prefs!.getString('theme') ?? 'light') == e[1]
+                            ? Pal.accent : Colors.transparent))),
+                    child: Text(e[0], style: TextStyle(fontSize: 14,
+                        fontWeight: (_prefs!.getString('theme') ?? 'light') == e[1]
+                            ? FontWeight.w700 : FontWeight.w400,
+                        color: (_prefs!.getString('theme') ?? 'light') == e[1]
+                            ? Pal.ink : Pal.inkDim)),
+                  ),
+                ),
+              ),
+          ]),
           const SizedBox(height: 16),
           Text('coffeeNetwork v${state.appVer}', style: TextStyle(fontFamily: _mono, fontSize: 12, color: Pal.inkDim)),
         ]),
