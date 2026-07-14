@@ -854,10 +854,20 @@ class _TicketPage extends StatelessWidget {
   }
 
   // ---------- ЖУРНАЛ: слово-статус и текстовые действия ----------
+  /// «24,3» — МБ/с без единиц, как в макете «Журнала».
+  String _magSpeed(int bps) => (bps / 1048576).toStringAsFixed(1).replaceAll('.', ',');
+
+  /// «00:42» — часы:минуты сессии, компактно как в макете.
+  String _magTime() {
+    final t = state.sessionStr.replaceAll(' ', '');
+    return t.length >= 5 ? t.substring(0, 5) : t;
+  }
+
   Widget _mag(BuildContext context) {
     final on = state.connected && !state.busy;
     final a = state.active;
-    final word = state.busy ? 'секунду' : (on ? 'защищено' : 'отключено');
+    // перенос как в макете: «отклю-/чено.», точка — круглая, отдельным кружком
+    final word = state.busy ? 'секунду' : (on ? 'защи-\nщено' : 'отклю-\nчено');
     final top3 = state.servers.take(3).toList();
     return Padding(
       padding: const EdgeInsets.fromLTRB(22, 16, 22, 10),
@@ -872,33 +882,51 @@ class _TicketPage extends StatelessWidget {
         ]),
         const Spacer(),
         Text.rich(TextSpan(children: [
-          TextSpan(text: word, style: TextStyle(fontSize: 56, height: 0.98, letterSpacing: -2.2,
-              fontWeight: FontWeight.w600, color: on ? Pal.accent : Pal.ink)),
-          TextSpan(text: '.', style: TextStyle(fontSize: 56, fontWeight: FontWeight.w600,
-              color: on ? Pal.ink : Pal.accent)),
+          TextSpan(text: word, style: TextStyle(fontSize: 76, height: 1.04, letterSpacing: -3,
+              fontWeight: FontWeight.w800, color: on ? Pal.accent : Pal.ink)),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 7),
+              child: Container(width: 14, height: 14,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: on ? Pal.ink : Pal.accent)),
+            ),
+          ),
         ])),
-        const SizedBox(height: 12),
-        Text('${(a?.name ?? 'сервер не выбран').toLowerCase()} · ${(a?.protocol ?? '—').toLowerCase()}',
-            style: TextStyle(fontSize: 14, color: Pal.inkFaint)),
+        const SizedBox(height: 16),
+        Text('${a?.name ?? 'сервер не выбран'} · ${(a?.protocol ?? '—').toLowerCase()}',
+            style: TextStyle(fontSize: 17, color: Pal.inkDim)),
         if (on)
           Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(
-              '↓ ${_HomeShellState.fmtSpeed(state.downSpeed)}   ↑ ${_HomeShellState.fmtSpeed(state.upSpeed)}   ${state.sessionStr}',
-              style: TextStyle(fontFamily: _mono, fontSize: 12.5, color: Pal.inkDim)),
+            padding: const EdgeInsets.only(top: 16),
+            child: Text.rich(TextSpan(
+              style: TextStyle(fontFamily: _mono, fontSize: 16, color: Pal.ink),
+              children: [
+                TextSpan(text: '↓ ', style: TextStyle(color: Pal.accent)),
+                TextSpan(text: _magSpeed(state.downSpeed)),
+                const TextSpan(text: '  '),
+                TextSpan(text: '↑ ', style: TextStyle(color: Pal.accent)),
+                TextSpan(text: _magSpeed(state.upSpeed)),
+                const TextSpan(text: '  '),
+                TextSpan(text: _magTime(), style: TextStyle(color: Pal.inkDim)),
+              ],
+            )),
           ),
-        const SizedBox(height: 26),
+        const SizedBox(height: 30),
         _ConnectButton(state: state),
-        const SizedBox(height: 24),
-        Wrap(spacing: 18, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          _modeLink('весь трафик', 'tun'),
-          _modeLink('только прокси', 'sys'),
-          GestureDetector(
-            onTap: () { state.setState(() => state.bypassRu = !state.bypassRu); state._save(); },
-            child: Text('сайты РФ — напрямую ${state.bypassRu ? '✓' : '✕'}',
-                style: TextStyle(fontSize: 13.5, color: Pal.inkDim)),
-          ),
-        ]),
+        if (!on) ...[
+          const SizedBox(height: 24),
+          Wrap(spacing: 18, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            _modeLink('весь трафик', 'tun'),
+            _modeLink('только прокси', 'sys'),
+            GestureDetector(
+              onTap: () { state.setState(() => state.bypassRu = !state.bypassRu); state._save(); },
+              child: Text('сайты РФ — напрямую ${state.bypassRu ? '✓' : '✕'}',
+                  style: TextStyle(fontSize: 13.5, color: Pal.inkDim)),
+            ),
+          ]),
+        ],
         const Spacer(),
         Container(
           width: double.infinity,
@@ -1382,15 +1410,16 @@ class _ConnectButton extends StatelessWidget {
           child: GestureDetector(
             onTap: state.toggle,
             child: Container(
-              padding: const EdgeInsets.only(bottom: 6),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.accent, width: 2.5))),
+              padding: const EdgeInsets.only(bottom: 8, right: 34),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(
+                  color: state.connected ? Pal.hair : Pal.accent, width: 3))),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text(
                   state.busy ? 'секунду…' : (state.connected ? 'отключить' : 'подключить'),
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Pal.ink),
+                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: Pal.ink),
                 ),
-                const SizedBox(width: 10),
-                Icon(Icons.arrow_forward, size: 22, color: Pal.ink),
+                const SizedBox(width: 12),
+                Icon(Icons.arrow_forward, size: 28, color: Pal.ink),
               ]),
             ),
           ),
