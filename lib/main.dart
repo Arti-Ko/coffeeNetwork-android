@@ -907,19 +907,31 @@ class _TicketPage extends StatelessWidget {
           GestureDetector(onTap: _toServers, child: Text('серверы →', style: TextStyle(fontSize: 13, color: Pal.inkDim))),
         ]),
         const Spacer(),
-        Text.rich(TextSpan(children: [
-          TextSpan(text: word, style: TextStyle(fontSize: 76, height: 1.04, letterSpacing: -3,
-              fontWeight: FontWeight.w800, color: on ? Pal.accent : Pal.ink)),
-          WidgetSpan(
-            alignment: PlaceholderAlignment.baseline,
-            baseline: TextBaseline.alphabetic,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 7),
-              child: Container(width: 14, height: 14,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: on ? Pal.ink : Pal.accent)),
+        // FittedBox растягивает слово на всю доступную ширину; правый отступ
+        // даёт ~10-15% воздуха от края на любом экране
+        Padding(
+          padding: EdgeInsets.only(right: MediaQuery.of(context).size.width * 0.07),
+          child: SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.fitWidth,
+              alignment: Alignment.centerLeft,
+              child: Text.rich(TextSpan(children: [
+                TextSpan(text: word, style: TextStyle(fontSize: 76, height: 1.04, letterSpacing: -3,
+                    fontWeight: FontWeight.w800, color: on ? Pal.accent : Pal.ink)),
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.baseline,
+                  baseline: TextBaseline.alphabetic,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 7),
+                    child: Container(width: 14, height: 14,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: on ? Pal.ink : Pal.accent)),
+                  ),
+                ),
+              ])),
             ),
           ),
-        ])),
+        ),
         const SizedBox(height: 16),
         Text('${a?.name ?? 'сервер не выбран'} · ${(a?.protocol ?? '—').toLowerCase()}',
             style: TextStyle(fontSize: 17, color: Pal.inkDim)),
